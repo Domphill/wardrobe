@@ -18,10 +18,11 @@
   V.logWear = async (day, patch) => {
     const rec = D.get('days', day) || { id: day, day, outfits: [], items: [], note: '' };
     if (patch.item && !rec.items.includes(patch.item)) rec.items.push(patch.item);
+    for (const id of patch.items || []) if (!rec.items.includes(id)) rec.items.push(id);
     if (patch.outfit && !rec.outfits.includes(patch.outfit)) rec.outfits.push(patch.outfit);
     await D.put('days', rec);
     const when = day === U.todayKey() ? 'today' : day > U.todayKey() ? 'for ' + U.fmtDayMonth(U.parseDay(day)) : 'on ' + U.fmtDayMonth(U.parseDay(day));
-    UI.toast((patch.outfit ? 'Outfit' : 'Item') + (day > U.todayKey() ? ' planned ' : ' logged ') + when, { action: { label: 'See day', run: () => R.go('calendar', day) } });
+    UI.toast((patch.outfit ? 'Outfit' : patch.items ? 'Pieces' : 'Item') + (day > U.todayKey() ? ' planned ' : ' logged ') + when, { action: { label: 'See day', run: () => R.go('calendar', day) } });
   };
   V.pickDay = (title) =>
     new Promise((resolve) => {

@@ -29,6 +29,59 @@
     });
   };
 
+  function weatherCard(prefs) {
+    const W = L.weather;
+    const place = prefs.place;
+    const results = h('div.town-results');
+    const input = h('input.input#town-q', { type: 'search', placeholder: 'Town or city', 'aria-label': 'Town or city', autocomplete: 'off' });
+    const find = async () => {
+      const q = input.value.trim();
+      if (q.length < 2) return;
+      UI.clear(results);
+      results.appendChild(h('p.hint', 'Searching…'));
+      try {
+        const found = await W.geocode(q);
+        UI.clear(results);
+        if (!found.length) results.appendChild(h('p.hint', 'No town by that name. Try the nearest bigger town.'));
+        for (const p of found) {
+          results.appendChild(
+            h('button.town-opt', { type: 'button', onclick: async () => {
+              await D.setPrefs({ place: p });
+              W.clearCache();
+              if (L.drafts.today) L.drafts.today = null;
+              UI.toast('Weather set to ' + p.name);
+            } }, UI.icon('pin'), h('span', h('strong', p.name), p.region ? h('span.muted', ' · ' + p.region) : null))
+          );
+        }
+      } catch (e) {
+        UI.clear(results);
+        results.appendChild(h('p.hint', navigator.onLine === false ? 'You’re offline. Try again when you have a connection.' : (e && e.message) || 'The search failed.'));
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        find();
+      }
+    });
+    return h(
+      'div.card',
+      UI.sectionHead('Weather'),
+      h('p.muted', place ? 'Forecasts for ' + place.name + (place.region ? ', ' + place.region : '') + '. The Closet page suggests outfits for the day’s weather.' : 'Add your town and the Closet page suggests outfits for the day’s weather.'),
+      h('div.inline-form', input, UI.btn('Find', find, { small: true, id: 'town-find' })),
+      results,
+      h('div.field', h('span.label', 'Temperatures'), UI.segmented({ label: 'Temperature unit', value: prefs.tempUnit || 'C', options: [{ value: 'C', label: '°C' }, { value: 'F', label: '°F' }], onChange: (v) => D.setPrefs({ tempUnit: v }) })),
+      place
+        ? UI.btn('Stop using the weather', async () => {
+            await D.setPrefs({ place: null });
+            W.clearCache();
+            L.drafts.today = null;
+          }, { small: true, kind: 'ghost' })
+        : null,
+      h('p.fineprint', 'Forecasts come from Open-Meteo, a free weather service. Only the town’s map position is sent, and only when the Closet page opens; nothing about you or your clothes.')
+    );
+  }
+
   V.more = {
     render(root) {
       const prefs = D.prefs();
@@ -89,6 +142,7 @@
           UI.sectionHead('Keep your photos safe'),
           h('p.muted', L.env.ios && !L.env.standalone ? 'On an iPhone, Safari can clear a website’s saved data if it isn’t opened for a while. Adding Wardrobe to your Home Screen (Share, then Add to Home Screen) stops that, and a backup now and then covers everything else.' : L.env.standalone ? 'Wardrobe is installed, so the browser keeps its data. A backup now and then covers a lost or reset phone.' : 'Clearing this browser’s site data would erase your wardrobe. Add it to your home screen and take a backup now and then.')
         ),
+        weatherCard(prefs),
         h(
           'div.card',
           UI.sectionHead('Appearance'),

@@ -14,6 +14,7 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 - **Closet:** photograph each piece against a plain background and the background is cut out automatically. Tap to tidy the cut-out if it needs it. Each item has a category, type, colours (detected from the photo), brand, size, price, seasons and occasions. Search and filter the lot.
 - **Outfits:** put cut-outs together on a canvas, move and resize them, and save the combination.
 - **Calendar:** log what you wore each day, or plan an outfit for a day ahead.
+- **Today:** the Closet page suggests outfits for the day. Add your town under **More, Weather** and it uses the local forecast; without one it goes by the season. Ideas favour pieces that haven't been worn lately, and you can wear the idea, shuffle it, or save it as an outfit.
 - **Stats:** most worn, not worn in 90 days, cost per wear, and the closet by category and colour.
 - **Backup:** one file with everything in it, including photos, to move to another phone or keep safe.
 
@@ -26,7 +27,7 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 
 ## Where your things are kept
 
-Everything, including the photos, is stored in the browser (or the home-screen app) on the device you are using. Nothing is sent to a server. Each device keeps its own wardrobe: use **More, Download a backup** and **Restore from a backup** to move it. Clearing the browser's site data, or deleting the home-screen app, erases it.
+Everything, including the photos, is stored in the browser (or the home-screen app) on the device you are using. Nothing is sent to a server. The one exception is optional: if you add a town for the weather, that town's map position is sent to Open-Meteo (a free weather service) to fetch the forecast, and nothing else. Each device keeps its own wardrobe: use **More, Download a backup** and **Restore from a backup** to move it. Clearing the browser's site data, or deleting the home-screen app, erases it.
 
 ## Notes for making changes
 

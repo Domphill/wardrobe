@@ -29,6 +29,8 @@ const FILES = [
   'src/ui.js',
   'src/cutout.js',
   'src/model.js',
+  'src/weather.js',
+  'src/suggest.js',
   'src/view-closet.js',
   'src/view-item.js',
   'src/view-outfits.js',
