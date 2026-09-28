@@ -12,8 +12,8 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 ## What it does
 
 - **Closet:** photograph each piece against a plain background and the background is cut out automatically. Tap to tidy the cut-out if it needs it. The colours are read from the photo (the lighting is corrected using the background, so navy doesn't become black under a warm bulb) and the type is guessed from the outline: two legs are trousers, shoulders mean a top, and so on. Each item has a category, type, colours, brand, size, price, seasons and occasions. Search and filter the lot.
-- **Outfits:** put cut-outs together on a canvas, move and resize them, and save the combination.
-- **Calendar:** log what you wore each day, or plan an outfit for a day ahead.
+- **Outfits:** put cut-outs together on a canvas, move, resize, tilt and mirror them, and save the combination. **Mix and match** flicks through each kind of piece like a flip book, or shuffles a whole outfit, so you can try combinations quickly.
+- **Calendar:** log what you wore each day, or plan an outfit for a day ahead. With a town set, the next ten days show their forecast, and each day offers outfit ideas for that weather that you can plan with a tap, or pick your own.
 - **Today:** the Closet page suggests outfits for the day. Add your town under **More, Weather** and it uses the local forecast; without one it goes by the season. Ideas favour pieces that haven't been worn lately, and you can wear the idea, shuffle it, or save it as an outfit.
 - **Stats:** most worn, not worn in 90 days, cost per wear, and the closet by category and colour.
 - **Backup:** one file with everything in it, including photos, to move to another phone or keep safe.

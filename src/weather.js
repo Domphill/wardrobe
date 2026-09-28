@@ -71,7 +71,7 @@
       /* ignore */
     }
   };
-  /* Today's and tomorrow's forecast for a place, kept for three hours so the page opens instantly. */
+  /* The next ten days' forecast for a place, kept for three hours so pages open instantly. */
   W.forecast = async (place, force) => {
     if (!place || place.lat == null) return null;
     const key = U.todayKey() + '|' + place.lat + ',' + place.lon;
@@ -82,7 +82,7 @@
       place.lat +
       '&longitude=' +
       place.lon +
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=2';
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=10';
     const r = await fetch(url);
     if (!r.ok) throw new Error('The weather service didn’t answer (error ' + r.status + ').');
     const j = await r.json();

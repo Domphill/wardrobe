@@ -1,4 +1,5 @@
-/* Wardrobe — the calendar: what was worn each day, and what is planned. */
+/* Wardrobe — the calendar: what was worn each day, what is planned, and the days ahead with their
+   weather and outfit ideas. */
 (function (L) {
   'use strict';
   const U = L.util;
@@ -7,6 +8,8 @@
   const D = L.data;
   const R = L.router;
   const M = L.model;
+  const W = L.weather;
+  const S = L.suggest;
   const V = (L.views = L.views || {});
   const drafts = (L.drafts = L.drafts || {});
 
@@ -17,16 +20,43 @@
     d.setMonth(d.getMonth() + n);
     return U.dayKey(d).slice(0, 7);
   };
+  /* The forecast for the days ahead, by day, once it has arrived. */
+  const forecastMap = () => new Map(((drafts.cal && drafts.cal.fx) || []).map((d) => [d.day, d]));
+  function loadForecast(st) {
+    const place = D.prefs().place;
+    if (!place) {
+      st.fx = null;
+      st.fxKey = null;
+      return;
+    }
+    const key = U.todayKey() + '|' + place.lat + ',' + place.lon;
+    if (st.fxKey === key || st.fxLoading) return;
+    st.fxLoading = true;
+    W.forecast(place)
+      .then((days) => {
+        st.fx = days;
+        st.fxKey = key;
+        st.fxLoading = false;
+        if (R.current.name === 'calendar') L.app.render();
+      })
+      .catch(() => {
+        st.fx = null;
+        st.fxKey = key;
+        st.fxLoading = false;
+      });
+  }
 
   V.calendar = {
     render(root, arg) {
       const today = U.todayKey();
-      const st = drafts.cal || (drafts.cal = { month: monthOf(today) });
+      const st = drafts.cal || (drafts.cal = { month: monthOf(today), fx: null, fxKey: null, fxLoading: false });
       if (arg && /^\d{4}-\d{2}-\d{2}$/.test(arg)) {
         st.month = monthOf(arg);
         st.open = arg;
         R.current.arg = null;
       }
+      loadForecast(st);
+      const fx = forecastMap();
       const days = new Map(D.list('days').map((d) => [d.id, d]));
       const first = firstOf(st.month);
       const startPad = (first.getDay() + 6) % 7; /* Monday first */
@@ -35,8 +65,10 @@
       for (let i = 0; i < startPad; i++) cells.push(null);
       for (let d = 1; d <= daysIn; d++) cells.push(st.month + '-' + U.pad2(d));
       while (cells.length % 7) cells.push(null);
+      const place = D.prefs().place;
 
-      UI.append(root, 
+      UI.append(
+        root,
         h(
           'div.page-head.split',
           h('h1.page-title', 'Calendar'),
@@ -68,16 +100,20 @@
             const firstItem = !outfit && items.length ? D.get('items', items[0]) : null;
             const pic = outfit ? outfit.thumb : firstItem ? firstItem.thumb || firstItem.image : null;
             const n = (rec ? (rec.outfits || []).length : 0) + (rec ? (rec.items || []).length : 0);
+            const wx = key >= today ? fx.get(key) : null;
             return h(
               'button.cal-cell' + (key === today ? '.today' : '') + (key > today ? '.future' : '') + (n ? '.has' : ''),
-              { type: 'button', 'aria-label': U.fmtLongYear(U.parseDay(key)) + (n ? ', ' + U.plural(n, 'thing') + (key > today ? ' planned' : ' worn') : ''), onclick: () => daySheet(key) },
+              { type: 'button', 'aria-label': U.fmtLongYear(U.parseDay(key)) + (n ? ', ' + U.plural(n, 'thing') + (key > today ? ' planned' : ' worn') : '') + (wx ? ', ' + W.line(wx) : ''), onclick: () => daySheet(key) },
               h('span.cal-num', String(Number(key.slice(8)))),
               pic ? UI.pic(pic, '', 'cal-pic') : n ? h('span.cal-dot') : null,
-              n > 1 ? h('span.cal-more', '+' + (n - 1)) : null
+              n > 1 ? h('span.cal-more', '+' + (n - 1)) : null,
+              wx ? h('span.cal-wx', UI.icon(W.describe(wx.code)[1]), h('span', Math.round(wx.tmax) + '°')) : null
             );
           })
         ),
-        h('p.hint', 'Tap a day to log what you wore, or to plan an outfit for it.')
+        place
+          ? h('p.hint', 'Tap a day to see the forecast and outfit ideas, log what you wore, or plan an outfit.')
+          : h('p.hint', 'Tap a day to log what you wore, or to plan an outfit for it. ', h('button.link-btn.inline', { type: 'button', onclick: () => R.go('more') }, 'Add your town in More'), ' to see the forecast and ideas for the days ahead.')
       );
       if (st.open) {
         const key = st.open;
@@ -90,6 +126,7 @@
   function daySheet(key) {
     const today = U.todayKey();
     const future = key > today;
+    const wx = key >= today ? forecastMap().get(key) : null;
     const body = h('div.form');
     const s = UI.sheet({ title: U.relDay(U.parseDay(key)) + (future ? ' · planned' : ''), body, wide: true });
     function paint() {
@@ -107,7 +144,41 @@
         await D.put('days', rec, { silent: true });
         paint();
       };
-      UI.append(body, 
+      const addOutfit = async (o) => {
+        if (!rec.outfits.includes(o.id)) rec.outfits.push(o.id);
+        await D.put('days', rec, { silent: true });
+        UI.toast((future ? 'Planned ' : 'Logged ') + (o.name || 'outfit'));
+        paint();
+      };
+      const addItems = async (ids) => {
+        for (const id of ids) if (!rec.items.includes(id)) rec.items.push(id);
+        await D.put('days', rec, { silent: true });
+        UI.toast(future ? 'Pieces planned' : 'Pieces logged');
+        paint();
+      };
+      /* ideas for today and the days ahead */
+      let ideas = null;
+      if (key >= today) {
+        const ctx = S.context(wx || null, U.parseDay(key));
+        const suited = S.outfits(ctx).slice(0, 3).filter((x) => !rec.outfits.includes(x.outfit.id));
+        const pieces = S.compose(ctx, false);
+        ideas = h(
+          'div.ideas',
+          { id: 'day-ideas' },
+          wx ? h('div.today-head', UI.icon(W.describe(wx.code)[1], 'today-ic'), h('div.today-text', h('strong', W.fmtTemp(wx.tmax) + ' · ' + W.describe(wx.code)[0]), h('span.muted', 'low ' + W.fmtTemp(wx.tmin) + (wx.rain >= 30 ? ' · ' + wx.rain + '% chance of rain' : '')))) : null,
+          h('h3.mini-title', future ? 'Ideas for this day' : 'Ideas for today'),
+          h('p.muted', S.reason(ctx) + (suited.length ? ' Tap an outfit to ' + (future ? 'plan it.' : 'log it.') : '')),
+          suited.length ? h('div.outfit-strip', suited.map((x) => h('button.outfit-mini', { type: 'button', onclick: () => addOutfit(x.outfit), 'aria-label': (future ? 'Plan ' : 'Log ') + (x.outfit.name || 'outfit') }, UI.pic(x.outfit.thumb, ''), h('span', x.outfit.name || 'Outfit')))) : null,
+          pieces.length
+            ? [
+                h('div.outfit-strip', pieces.map((it) => h('span.outfit-mini', UI.pic(it.thumb || it.image, ''), h('span', it.name)))),
+                h('div.actions', UI.btn(future ? 'Plan these pieces' : 'Wear these pieces', () => addItems(pieces.map((p) => p.id)), { small: true, kind: 'primary', icon: 'check', id: 'day-plan-pieces' }))
+              ]
+            : null
+        );
+      }
+      UI.append(
+        body,
         h('p.muted', U.fmtLongYear(U.parseDay(key))),
         outfits.length || items.length
           ? h(
@@ -124,9 +195,10 @@
           : h('p.hint', future ? 'Nothing planned yet.' : 'Nothing logged for this day.'),
         h(
           'div.actions',
-          UI.btn('Add an outfit', () => pickOutfit(rec, paint), { icon: 'hanger', kind: 'primary', small: true, id: 'day-add-outfit' }),
+          UI.btn(future ? 'Plan an outfit' : 'Add an outfit', () => pickOutfit(rec, paint), { icon: 'hanger', kind: 'primary', small: true, id: 'day-add-outfit' }),
           UI.btn('Add pieces', () => pickItems(rec, paint), { icon: 'shirt', small: true, id: 'day-add-items' })
         ),
+        ideas,
         UI.field(
           'Note (optional)',
           UI.autoGrow(
@@ -139,7 +211,6 @@
       );
     }
     paint();
-    s.wrap.addEventListener('transitionend', () => {}, { once: true });
     const done = s.close;
     s.close = (r) => {
       done(r);

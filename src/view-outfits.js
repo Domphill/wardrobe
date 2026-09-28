@@ -11,6 +11,7 @@
   const V = (L.views = L.views || {});
   const drafts = (L.drafts = L.drafts || {});
   const ASPECT = 4 / 3; /* the canvas is 3 wide by 4 high */
+  const MIX_CATS = ['outerwear', 'tops', 'dresses', 'bottoms', 'shoes', 'bags', 'accessories', 'jewellery', 'other'];
 
   V.outfitCard = (o, onclick) =>
     h(
@@ -32,6 +33,8 @@
     }
   };
 
+  const transformOf = (p) => 'rotate(' + (p.rot || 0) + 'deg) scaleX(' + (p.flip ? -1 : 1) + ')';
+
   /* ---------- the builder ---------- */
   V.outfit = {
     live: false,
@@ -52,24 +55,27 @@
               favourite: existing ? !!existing.favourite : false,
               placed: existing ? M.outfitItems(existing) : [],
               selected: null,
+              mix: false,
               dirty: false
             });
       const err = h('p.form-error', { role: 'alert' });
       const stage = h('div.stage', { role: 'group', 'aria-label': 'Outfit canvas. Drag pieces to move them.' });
       const tools = h('div.stage-tools');
+      const mixer = h('div.mixer', { hidden: !st.mix, id: 'mixer' });
       let busy = null;
+      const closet = () => D.list('items').filter((i) => i.status !== 'archived').sort(U.byDesc((i) => i.created || ''));
 
       /* ----- the canvas ----- */
       function paintStage() {
         UI.clear(stage);
         if (!st.placed.length) {
-          stage.appendChild(h('div.stage-empty', UI.icon('hanger'), h('p', 'Add pieces from your closet to start.')));
+          stage.appendChild(h('div.stage-empty', UI.icon('hanger'), h('p', 'Add pieces from your closet to start, or try Mix and match.')));
         }
         st.placed
           .slice()
           .sort((a, b) => (a.z || 0) - (b.z || 0))
           .forEach((p) => {
-            const el = h('div.piece' + (p === st.selected ? '.selected' : ''), { style: { left: p.x * 100 + '%', top: (p.y * 100) / ASPECT + '%', width: p.w * 100 + '%', zIndex: String(p.z || 0) }, 'data-id': p.id });
+            const el = h('div.piece' + (p === st.selected ? '.selected' : ''), { style: { left: p.x * 100 + '%', top: (p.y * 100) / ASPECT + '%', width: p.w * 100 + '%', zIndex: String(p.z || 0), transform: transformOf(p) }, 'data-id': p.id });
             el.appendChild(UI.pic(p.item.image, p.item.name, 'piece-img'));
             el.appendChild(h('span.piece-handle', { 'aria-hidden': 'true' }));
             el.addEventListener('pointerdown', (e) => startDrag(e, p, el));
@@ -77,6 +83,7 @@
           });
         paintTools();
       }
+      const elOf = (p) => stage.querySelector('.piece[data-id="' + p.id + '"]');
       function startDrag(e, p, el) {
         if (e.button != null && e.button !== 0) return;
         e.preventDefault();
@@ -85,7 +92,11 @@
         const handle = e.target.classList.contains('piece-handle');
         const start = { x: e.clientX, y: e.clientY, px: p.x, py: p.y, pw: p.w };
         let moved = false;
-        el.setPointerCapture(e.pointerId);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch (err2) {
+          /* ignore */
+        }
         const move = (ev) => {
           const dx = (ev.clientX - start.x) / rect.width;
           const dy = (ev.clientY - start.y) / rect.width; /* y is in widths so pieces keep their shape */
@@ -117,40 +128,154 @@
       stage.addEventListener('pointerdown', (e) => {
         if (e.target === stage) select(null);
       });
+      const turn = (p, deg) => {
+        p.rot = ((((p.rot || 0) + deg) % 360) + 540) % 360 - 180;
+        st.dirty = true;
+        const el = elOf(p);
+        if (el) el.style.transform = transformOf(p);
+        const slider = tools.querySelector('#piece-angle');
+        if (slider) slider.value = String(p.rot);
+      };
+      const mirror = (p) => {
+        p.flip = !p.flip;
+        st.dirty = true;
+        const el = elOf(p);
+        if (el) el.style.transform = transformOf(p);
+        const b = tools.querySelector('#piece-mirror');
+        if (b) b.setAttribute('aria-pressed', String(!!p.flip));
+      };
       function paintTools() {
         UI.clear(tools);
         const p = st.selected;
         if (!p) {
-          tools.appendChild(h('p.hint', st.placed.length ? 'Tap a piece to move it to the front or back, resize it with the corner, or take it off.' : ''));
+          tools.appendChild(h('p.hint', st.placed.length ? 'Tap a piece to tilt, mirror, bring it forward or back, resize it with the corner, or take it off.' : ''));
           return;
         }
         const zs = st.placed.map((x) => x.z || 0);
-        UI.append(tools, 
-          h('span.tool-name', p.item.name),
-          UI.iconBtn('forward', 'Bring to front', () => {
-            p.z = Math.max(...zs) + 1;
-            st.dirty = true;
-            paintStage();
-            select(p);
+        UI.append(
+          tools,
+          h(
+            'div.tool-row',
+            h('span.tool-name', p.item.name),
+            UI.iconBtn('forward', 'Bring to front', () => {
+              p.z = Math.max(...zs) + 1;
+              st.dirty = true;
+              paintStage();
+              select(p);
+            }),
+            UI.iconBtn('backward', 'Send to back', () => {
+              p.z = Math.min(...zs) - 1;
+              st.dirty = true;
+              paintStage();
+              select(p);
+            }),
+            UI.iconBtn('trash', 'Take off', () => {
+              st.placed = st.placed.filter((x) => x !== p);
+              st.selected = null;
+              st.dirty = true;
+              paintStage();
+              paintMixer();
+            }, { cls: 'danger-text' })
+          ),
+          h(
+            'div.tool-row',
+            UI.btn('Tilt left', () => turn(p, -15), { small: true, kind: 'ghost', icon: 'undo', id: 'piece-left' }),
+            h('input.range#piece-angle', { type: 'range', min: '-180', max: '180', step: '5', value: String(p.rot || 0), 'aria-label': 'Angle', oninput: (e) => turn(p, Number(e.target.value) - (p.rot || 0)) }),
+            UI.btn('Tilt right', () => turn(p, 15), { small: true, kind: 'ghost', icon: 'redo', id: 'piece-right' }),
+            h('button.btn.small.ghost#piece-mirror', { type: 'button', 'aria-pressed': String(!!p.flip), onclick: () => mirror(p) }, UI.icon('mirror'), h('span', 'Mirror'))
+          )
+        );
+      }
+
+      /* ----- mix and match: a revolver for each kind of piece ----- */
+      const fresh = (it) => ({ id: it.id, item: it, x: 0.3, y: 0.3, w: 0.4, z: (st.placed.length ? Math.max(...st.placed.map((x) => x.z || 0)) : 0) + 1, rot: 0, flip: false });
+      const placeNew = (piece, keep) => {
+        const laid = M.arrange(st.placed.concat(piece));
+        const pos = laid.find((x) => x.id === piece.id);
+        if (keep) Object.assign(piece, { x: keep.x, y: keep.y, w: keep.w });
+        else if (pos) Object.assign(piece, { x: pos.x, y: pos.y, w: pos.w });
+        st.placed.push(piece);
+      };
+      function cycle(cat, dir) {
+        const list = closet().filter((i) => i.category === cat);
+        if (!list.length) return;
+        const current = st.placed.find((p) => p.item.category === cat);
+        const idx = current ? list.findIndex((i) => i.id === current.id) : list.length;
+        let next = idx + dir;
+        if (next > list.length) next = 0;
+        if (next < 0) next = list.length;
+        if (current) st.placed = st.placed.filter((p) => p !== current);
+        if (next < list.length) placeNew(fresh(list[next]), current);
+        st.selected = null;
+        st.dirty = true;
+        paintStage();
+        paintMixer();
+      }
+      function shuffle() {
+        const items = closet();
+        const pick = (cat) => {
+          const list = items.filter((i) => i.category === cat);
+          return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+        };
+        const chosen = [];
+        const dress = pick('dresses');
+        const top = pick('tops');
+        const bottom = pick('bottoms');
+        if (dress && (!top || !bottom || Math.random() < 0.3)) chosen.push(dress);
+        else {
+          if (top) chosen.push(top);
+          if (bottom) chosen.push(bottom);
+        }
+        const outer = pick('outerwear');
+        if (outer && Math.random() < 0.5) chosen.push(outer);
+        const shoes = pick('shoes');
+        if (shoes) chosen.push(shoes);
+        for (const cat of ['bags', 'accessories']) {
+          const extra = pick(cat);
+          if (extra && Math.random() < 0.35) chosen.push(extra);
+        }
+        st.placed = M.arrange(chosen.map((it, i) => Object.assign(fresh(it), { z: i })));
+        st.selected = null;
+        st.dirty = true;
+        paintStage();
+        paintMixer();
+      }
+      function paintMixer() {
+        UI.clear(mixer);
+        mixer.hidden = !st.mix;
+        if (!st.mix) return;
+        const items = closet();
+        const rows = MIX_CATS.filter((cat) => items.some((i) => i.category === cat));
+        if (!rows.length) {
+          mixer.appendChild(h('p.hint', 'Add some clothes to your closet first.'));
+          return;
+        }
+        UI.append(
+          mixer,
+          h('p.hint', 'Flick through each kind of piece to try combinations. The canvas shows the current mix.'),
+          rows.map((cat) => {
+            const list = items.filter((i) => i.category === cat);
+            const current = st.placed.find((p) => p.item.category === cat);
+            return h(
+              'div.mix-row',
+              { 'data-cat': cat },
+              UI.iconBtn('back', 'Previous ' + M.catLabel(cat).toLowerCase(), () => cycle(cat, -1), { cls: 'mix-prev' }),
+              h(
+                'button.mix-current',
+                { type: 'button', onclick: () => current && select(current), 'aria-label': M.catLabel(cat) + ': ' + (current ? current.item.name : 'none') },
+                current ? UI.pic(current.item.thumb || current.item.image, '', 'mix-pic') : h('span.mix-none', UI.icon('x')),
+                h('span.mix-text', h('span.mix-cat', M.catLabel(cat)), h('span.mix-name', current ? current.item.name : 'None' + (list.length ? ' of ' + list.length : '')))
+              ),
+              UI.iconBtn('chev', 'Next ' + M.catLabel(cat).toLowerCase(), () => cycle(cat, 1), { cls: 'mix-next' })
+            );
           }),
-          UI.iconBtn('backward', 'Send to back', () => {
-            p.z = Math.min(...zs) - 1;
-            st.dirty = true;
-            paintStage();
-            select(p);
-          }),
-          UI.iconBtn('trash', 'Take off', () => {
-            st.placed = st.placed.filter((x) => x !== p);
-            st.selected = null;
-            st.dirty = true;
-            paintStage();
-          }, { cls: 'danger-text' })
+          h('div.actions', UI.btn('Shuffle', shuffle, { small: true, icon: 'shuffle', kind: 'ghost', id: 'mix-shuffle' }))
         );
       }
 
       /* ----- adding pieces ----- */
       function addPieces() {
-        const items = D.list('items').filter((i) => i.status !== 'archived');
+        const items = closet();
         if (!items.length) {
           UI.toast('Add some clothes to your closet first.');
           return;
@@ -177,15 +302,14 @@
           }
         };
         const add = UI.btn('Add', () => {
-          const zTop = st.placed.length ? Math.max(...st.placed.map((x) => x.z || 0)) : 0;
-          const fresh = [];
+          const news = [];
           for (const id of chosen) {
             if (st.placed.some((p) => p.id === id)) continue;
-            fresh.push({ id, item: D.get('items', id), x: 0.3, y: 0.3, w: 0.4, z: zTop + 1 + fresh.length });
+            news.push(fresh(D.get('items', id)));
           }
-          if (fresh.length) {
-            const laid = M.arrange(st.placed.concat(fresh));
-            /* keep pieces that were already placed where they were; only the new ones take the suggested spots */
+          if (news.length) {
+            const laid = M.arrange(st.placed.concat(news));
+            /* pieces already placed stay where they were; only the new ones take the suggested spots */
             st.placed = laid.map((p) => {
               const was = st.placed.find((x) => x.id === p.id);
               return was ? was : p;
@@ -194,6 +318,7 @@
           }
           s.close();
           paintStage();
+          paintMixer();
         }, { kind: 'primary', id: 'pieces-add' });
         const s = UI.sheet({
           title: 'Add pieces',
@@ -231,7 +356,12 @@
             const bmp = await createImageBitmap(blob);
             const w = p.w * W;
             const hh = (w * bmp.height) / bmp.width;
-            ctx.drawImage(bmp, p.x * W, p.y * W, w, hh);
+            ctx.save();
+            ctx.translate(p.x * W + w / 2, p.y * W + hh / 2);
+            ctx.rotate(((p.rot || 0) * Math.PI) / 180);
+            ctx.scale(p.flip ? -1 : 1, 1);
+            ctx.drawImage(bmp, -w / 2, -hh / 2, w, hh);
+            ctx.restore();
             if (bmp.close) bmp.close();
           } catch (e) {
             /* a broken image is skipped */
@@ -251,7 +381,7 @@
             seasons: st.seasons,
             occasions: st.occasions,
             favourite: st.favourite,
-            items: st.placed.map((p) => ({ id: p.id, x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000, w: Math.round(p.w * 1000) / 1000, z: p.z || 0 })),
+            items: st.placed.map((p) => ({ id: p.id, x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000, w: Math.round(p.w * 1000) / 1000, z: p.z || 0, rot: p.rot || 0, flip: !!p.flip })),
             thumb
           });
           const saved = await D.put('outfits', rec);
@@ -273,7 +403,14 @@
 
       /* ----- the page ----- */
       const w = existing ? M.outfitWears(existing.id) : null;
-      UI.append(root, 
+      const mixBtn = UI.btn('Mix and match', () => {
+        st.mix = !st.mix;
+        mixBtn.setAttribute('aria-pressed', String(st.mix));
+        paintMixer();
+      }, { icon: 'shuffle', kind: 'ghost', id: 'outfit-mix' });
+      mixBtn.setAttribute('aria-pressed', String(st.mix));
+      UI.append(
+        root,
         h(
           'div.page-head.split',
           h('button.back-btn', { type: 'button', onclick: () => {
@@ -294,11 +431,12 @@
         ),
         h('div.stage-wrap', stage),
         tools,
-        h('div.actions', UI.btn('Add pieces', addPieces, { icon: 'plus', kind: 'primary', id: 'outfit-add-pieces' }), UI.btn('Tidy layout', () => {
+        h('div.actions', UI.btn('Add pieces', addPieces, { icon: 'plus', kind: 'primary', id: 'outfit-add-pieces' }), mixBtn, UI.btn('Tidy layout', () => {
           st.placed = M.arrange(st.placed);
           st.dirty = true;
           paintStage();
         }, { icon: 'grid', kind: 'ghost' })),
+        mixer,
         h(
           'div.form',
           UI.field('Name', h('input.input#o-name', { type: 'text', maxlength: 60, value: st.name, placeholder: suggestName(), oninput: (e) => (st.name = e.target.value) })),
@@ -346,6 +484,19 @@
           : null
       );
       paintStage();
+      paintMixer();
+      /* for the tests */
+      V.outfitTools = {
+        state: () => st,
+        select: (itemId) => select(st.placed.find((p) => p.id === itemId) || null),
+        tilt: (deg) => st.selected && turn(st.selected, deg),
+        mirror: () => st.selected && mirror(st.selected),
+        cycle,
+        shuffle,
+        openMix: () => {
+          if (!st.mix) mixBtn.click();
+        }
+      };
     }
   };
   const toggleIn = (arr, t, on) => {

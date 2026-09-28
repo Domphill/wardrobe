@@ -157,7 +157,9 @@
     select: '<circle cx="12" cy="12" r="7.5" stroke-dasharray="3.2 2.6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>',
     brush: '<path d="M4.5 19.5c2.5 0 4-1.2 4.4-3.3.3-1.4 1.4-2.2 2.6-1.3l.7.7c.9 1.2.1 2.3-1.3 2.6-2.1.4-3.3 1.9-3.3 4.4"/><path d="m11.5 14.5 7-9.5 1.5 1.5-9 7.5z"/>',
     crop: '<path d="M7 3.5v13.5h13.5"/><path d="M3.5 7H17v13.5"/>',
-    dropper: '<path d="m4.5 19.5 1-3.5 8-8 2.5 2.5-8 8z"/><path d="m12.5 7 4.5 4.5"/><path d="M15.5 4.5a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-2 2-4-4z"/>'
+    dropper: '<path d="m4.5 19.5 1-3.5 8-8 2.5 2.5-8 8z"/><path d="m12.5 7 4.5 4.5"/><path d="M15.5 4.5a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-2 2-4-4z"/>',
+    redo: '<path d="m15.5 6.5 4 4-4 4"/><path d="M19.5 10.5h-9a5 5 0 0 0 0 10H15"/>',
+    mirror: '<path d="M12 3.5v17"/><path d="M9 7.5 4.5 12 9 16.5z"/><path d="M15 7.5 19.5 12 15 16.5z" fill="currentColor"/>'
   };
   UI.icon = (name, cls) => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

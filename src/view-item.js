@@ -245,6 +245,25 @@
         const view = h('canvas.cut-view', { 'aria-label': 'The cut-out. Use the tools below it.' });
         const over = h('canvas.cut-overlay', { 'aria-hidden': 'true' });
         const wrap = h('div.cut-wrap', view, over);
+        const frame = h('div.cut-frame', wrap);
+        /* Sizes the picture to fit the screen without letterboxing, so the canvas box is exactly the
+           picture and a touch maps straight onto a pixel. */
+        function fit() {
+          if (!view.isConnected) {
+            window.removeEventListener('resize', fit);
+            return;
+          }
+          const availW = frame.clientWidth || photoBox.clientWidth || 360;
+          const maxH = Math.max(240, Math.round(window.innerHeight * 0.62));
+          const k = Math.min(availW / view.width, maxH / view.height);
+          const cw = Math.max(1, Math.round(view.width * k));
+          const ch = Math.max(1, Math.round(view.height * k));
+          view.style.width = cw + 'px';
+          view.style.height = ch + 'px';
+          wrap.style.width = cw + 'px';
+          wrap.style.height = ch + 'px';
+        }
+        window.addEventListener('resize', fit);
         const W = () => st.img.width;
         const H = () => st.img.height;
         const octx = () => over.getContext('2d');
@@ -318,6 +337,7 @@
           view.width = over.width = shown.width;
           view.height = over.height = shown.height;
           view.getContext('2d').drawImage(shown, 0, 0);
+          fit();
           drawOverlay();
         }
         const trimHistory = () => {
@@ -665,9 +685,10 @@
           tools.hidden = st.useOriginal;
           draw();
         } }), h('span', 'Keep the whole photo instead'));
-        UI.append(photoBox, wrap, tools, original, h('div.actions', UI.btn('Different photo', () => pickPhoto(false), { small: true, icon: 'image', kind: 'ghost' }), UI.btn('Retake', () => pickPhoto(true), { small: true, icon: 'camera', kind: 'ghost' })));
+        UI.append(photoBox, frame, tools, original, h('div.actions', UI.btn('Different photo', () => pickPhoto(false), { small: true, icon: 'image', kind: 'ghost' }), UI.btn('Retake', () => pickPhoto(true), { small: true, icon: 'camera', kind: 'ghost' })));
         renderSelection();
         draw();
+        requestAnimationFrame(fit);
         setMode(st.mode === 'pick' ? st.prevMode || 'remove' : st.mode);
         /* for the tests */
         V.edit.tools = {

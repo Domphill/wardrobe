@@ -567,18 +567,21 @@ img.missing {
   padding: 10px;
   box-sizing: border-box;
 }
-.cut-wrap {
+.cut-frame {
+  display: flex;
+  justify-content: center;
   border-radius: var(--r);
   overflow: hidden;
   border: 1px solid var(--line);
   background: var(--check);
   line-height: 0;
 }
+.cut-wrap {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
 .cut-view {
-  width: 100%;
-  height: auto;
-  max-height: 62vh;
-  object-fit: contain;
   display: block;
   touch-action: manipulation;
   cursor: crosshair;
@@ -1034,4 +1037,133 @@ img.missing {
 }
 #paint-colour {
   cursor: pointer;
+}
+
+/* ---------- tilt, mirror and mix and match ---------- */
+.piece {
+  transform-origin: center center;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.tool-row .range {
+  flex: 1;
+  min-width: 90px;
+  accent-color: var(--primary);
+}
+#piece-mirror[aria-pressed='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.mixer {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.mixer .hint {
+  margin: 0;
+}
+.mix-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+.mix-current {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mix-pic {
+  width: 44px;
+  height: 48px;
+  object-fit: contain;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 3px;
+  box-sizing: border-box;
+}
+.mix-none {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 48px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-3);
+}
+.mix-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.mix-cat {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.mix-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- weather on the calendar ---------- */
+.cal-wx {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: 6px;
+  padding: 1px 2px;
+}
+.cal-wx .ic {
+  width: 13px;
+  height: 13px;
+}
+.cal-cell.has .cal-wx {
+  justify-content: flex-start;
+}
+.ideas {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+.ideas .mini-title,
+.ideas .muted {
+  margin: 0;
+}
+span.outfit-mini {
+  cursor: default;
 }
