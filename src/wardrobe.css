@@ -1208,3 +1208,19 @@ span.outfit-mini {
 .stage {
   -webkit-touch-callout: none;
 }
+
+/* ---------- wide screens ---------- */
+@media (min-width: 760px) {
+  .stage-wrap {
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .cal-cell {
+    aspect-ratio: 1 / 1;
+  }
+  .cut-frame {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+}

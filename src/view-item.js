@@ -231,9 +231,12 @@
           const cutout = C.crop(C.apply(st.canvas, st.mask));
           f.colours = K.colours(cutout, 3, { bg: st.bg }).map((c) => ({ hex: c.hex, name: c.name }));
           st.guess = st.useOriginal ? null : K.guessKind(cutout, f.colours);
-          if (st.guess && st.guess.confidence !== 'low' && !editing && !f.type) {
+          const untouched = !f.type || (f.type === st.autoType && f.category === st.autoCategory);
+          if (st.guess && st.guess.confidence !== 'low' && !editing && untouched) {
             f.category = st.guess.category;
             f.type = st.guess.type;
+            st.autoType = f.type;
+            st.autoCategory = f.category;
           }
         } catch (e) {
           UI.toast((e && e.message) || 'That photo couldn’t be opened.');
@@ -273,7 +276,7 @@
           const availW = frame.clientWidth || photoBox.clientWidth || 360;
           const maxH = Math.max(240, Math.round(window.innerHeight * 0.62));
           frame.style.maxHeight = maxH + 'px';
-          const k = Math.min(availW / view.width, maxH / view.height) * st.zoom;
+          const k = Math.min((availW - 2) / view.width, (maxH - 2) / view.height) * st.zoom;
           const cw = Math.max(1, Math.round(view.width * k));
           const ch = Math.max(1, Math.round(view.height * k));
           view.style.width = cw + 'px';
