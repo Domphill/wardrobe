@@ -1167,3 +1167,44 @@ img.missing {
 span.outfit-mini {
   cursor: default;
 }
+
+/* ---------- zoom, rotation, degrees ---------- */
+.cut-frame {
+  display: block;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  scrollbar-width: thin;
+}
+.cut-frame .cut-wrap {
+  margin: 0 auto;
+}
+.zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.zoom-label {
+  min-width: 3.2ch;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.zoom-row .btn {
+  margin-left: auto;
+}
+.deg-input {
+  width: 84px;
+  min-height: 40px;
+  text-align: center;
+  font-weight: 700;
+  padding: 0 6px;
+}
+.deg-row {
+  grid-template-columns: 1fr auto auto;
+}
+.stage {
+  -webkit-touch-callout: none;
+}

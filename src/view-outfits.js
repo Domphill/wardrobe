@@ -84,42 +84,80 @@
         paintTools();
       }
       const elOf = (p) => stage.querySelector('.piece[data-id="' + p.id + '"]');
+      /* One finger drags a piece (or its corner to resize). Two fingers on it twist to turn it and
+         pinch to resize it. */
       function startDrag(e, p, el) {
         if (e.button != null && e.button !== 0) return;
         e.preventDefault();
         select(p);
-        const rect = stage.getBoundingClientRect();
-        const handle = e.target.classList.contains('piece-handle');
-        const start = { x: e.clientX, y: e.clientY, px: p.x, py: p.y, pw: p.w };
-        let moved = false;
+        const pts = el._pts || (el._pts = new Map());
+        pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
         try {
           el.setPointerCapture(e.pointerId);
         } catch (err2) {
           /* ignore */
         }
+        const rect = stage.getBoundingClientRect();
+        if (pts.size >= 2) {
+          const [a, b] = [...pts.values()];
+          el._gesture = { rot0: p.rot || 0, w0: p.w, a0: Math.atan2(b.y - a.y, b.x - a.x), d0: Math.hypot(b.x - a.x, b.y - a.y) || 1 };
+          el._drag = null;
+        } else {
+          el._drag = { x: e.clientX, y: e.clientY, px: p.x, py: p.y, pw: p.w, handle: e.target.classList.contains('piece-handle'), moved: false };
+        }
+        if (el._bound) return;
+        el._bound = true;
         const move = (ev) => {
-          const dx = (ev.clientX - start.x) / rect.width;
-          const dy = (ev.clientY - start.y) / rect.width; /* y is in widths so pieces keep their shape */
-          if (Math.abs(ev.clientX - start.x) + Math.abs(ev.clientY - start.y) > 3) moved = true;
-          if (handle) p.w = U.clamp(start.pw + dx, 0.12, 1);
+          const pt = pts.get(ev.pointerId);
+          if (!pt) return;
+          pt.x = ev.clientX;
+          pt.y = ev.clientY;
+          if (el._gesture && pts.size >= 2) {
+            const [a, b] = [...pts.values()];
+            const g = el._gesture;
+            const ang = Math.atan2(b.y - a.y, b.x - a.x);
+            const dd = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+            p.rot = wrapAngle(Math.round(g.rot0 + ((ang - g.a0) * 180) / Math.PI));
+            p.w = U.clamp(g.w0 * (dd / g.d0), 0.12, 1);
+            el.style.width = p.w * 100 + '%';
+            el.style.transform = transformOf(p);
+            st.dirty = true;
+            syncAngle(p);
+            return;
+          }
+          const dg = el._drag;
+          if (!dg) return;
+          const dx = (ev.clientX - dg.x) / rect.width;
+          const dy = (ev.clientY - dg.y) / rect.width; /* y is in widths so pieces keep their shape */
+          if (Math.abs(ev.clientX - dg.x) + Math.abs(ev.clientY - dg.y) > 3) dg.moved = true;
+          if (dg.handle) p.w = U.clamp(dg.pw + dx, 0.12, 1);
           else {
-            p.x = U.clamp(start.px + dx, -p.w * 0.5, 1 - p.w * 0.5);
-            p.y = U.clamp(start.py + dy, -0.1, ASPECT - 0.1);
+            p.x = U.clamp(dg.px + dx, -p.w * 0.5, 1 - p.w * 0.5);
+            p.y = U.clamp(dg.py + dy, -0.1, ASPECT - 0.1);
           }
           el.style.left = p.x * 100 + '%';
           el.style.top = (p.y * 100) / ASPECT + '%';
           el.style.width = p.w * 100 + '%';
         };
-        const up = () => {
-          el.removeEventListener('pointermove', move);
-          el.removeEventListener('pointerup', up);
-          el.removeEventListener('pointercancel', up);
-          if (moved) st.dirty = true;
+        const up = (ev) => {
+          pts.delete(ev.pointerId);
+          if (pts.size < 2) el._gesture = null;
+          if (!pts.size) {
+            if (el._drag && el._drag.moved) st.dirty = true;
+            el._drag = null;
+          }
         };
         el.addEventListener('pointermove', move);
         el.addEventListener('pointerup', up);
         el.addEventListener('pointercancel', up);
       }
+      const wrapAngle = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+      const syncAngle = (p) => {
+        const slider = tools.querySelector('#piece-angle');
+        const num = tools.querySelector('#piece-deg');
+        if (slider) slider.value = String(p.rot || 0);
+        if (num) num.value = String(p.rot || 0);
+      };
       function select(p) {
         st.selected = p;
         for (const el of stage.querySelectorAll('.piece')) el.classList.toggle('selected', el.dataset.id === (p ? p.id : ''));
@@ -129,12 +167,11 @@
         if (e.target === stage) select(null);
       });
       const turn = (p, deg) => {
-        p.rot = ((((p.rot || 0) + deg) % 360) + 540) % 360 - 180;
+        p.rot = wrapAngle((p.rot || 0) + deg);
         st.dirty = true;
         const el = elOf(p);
         if (el) el.style.transform = transformOf(p);
-        const slider = tools.querySelector('#piece-angle');
-        if (slider) slider.value = String(p.rot);
+        syncAngle(p);
       };
       const mirror = (p) => {
         p.flip = !p.flip;
@@ -180,10 +217,16 @@
           h(
             'div.tool-row',
             UI.btn('Tilt left', () => turn(p, -15), { small: true, kind: 'ghost', icon: 'undo', id: 'piece-left' }),
-            h('input.range#piece-angle', { type: 'range', min: '-180', max: '180', step: '5', value: String(p.rot || 0), 'aria-label': 'Angle', oninput: (e) => turn(p, Number(e.target.value) - (p.rot || 0)) }),
             UI.btn('Tilt right', () => turn(p, 15), { small: true, kind: 'ghost', icon: 'redo', id: 'piece-right' }),
             h('button.btn.small.ghost#piece-mirror', { type: 'button', 'aria-pressed': String(!!p.flip), onclick: () => mirror(p) }, UI.icon('mirror'), h('span', 'Mirror'))
-          )
+          ),
+          h(
+            'div.tool-row',
+            h('input.range#piece-angle', { type: 'range', min: '-180', max: '180', step: '1', value: String(p.rot || 0), 'aria-label': 'Angle', oninput: (e) => turn(p, Number(e.target.value) - (p.rot || 0)) }),
+            h('input.input.deg-input#piece-deg', { type: 'number', inputmode: 'numeric', min: '-180', max: '180', step: '1', value: String(p.rot || 0), 'aria-label': 'Angle in degrees', onchange: (e) => turn(p, (Number(e.target.value) || 0) - (p.rot || 0)) }),
+            h('span.label', '\u00b0')
+          ),
+          h('p.fineprint', 'Or put two fingers on the piece and twist to turn it, pinch to resize it.')
         );
       }
 

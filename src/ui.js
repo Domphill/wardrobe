@@ -159,6 +159,10 @@
     crop: '<path d="M7 3.5v13.5h13.5"/><path d="M3.5 7H17v13.5"/>',
     dropper: '<path d="m4.5 19.5 1-3.5 8-8 2.5 2.5-8 8z"/><path d="m12.5 7 4.5 4.5"/><path d="M15.5 4.5a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-2 2-4-4z"/>',
     redo: '<path d="m15.5 6.5 4 4-4 4"/><path d="M19.5 10.5h-9a5 5 0 0 0 0 10H15"/>',
+    hand: '<path d="M8 12.5V6a1.5 1.5 0 0 1 3 0v5.5"/><path d="M11 11V4.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14 11V6a1.5 1.5 0 0 1 3 0v6.5"/><path d="M17 12.5V9a1.5 1.5 0 0 1 3 0v6a6 6 0 0 1-6 6h-2.2a6 6 0 0 1-4.9-2.5L4 14.7a1.4 1.4 0 0 1 2.1-1.8L8 15"/>',
+    rotate: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 3.5V8H15"/>',
+    zoomin: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/><path d="M11 8.5v5M8.5 11h5"/>',
+    zoomout: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/><path d="M8.5 11h5"/>',
     mirror: '<path d="M12 3.5v17"/><path d="M9 7.5 4.5 12 9 16.5z"/><path d="M15 7.5 19.5 12 15 16.5z" fill="currentColor"/>'
   };
   UI.icon = (name, cls) => {
