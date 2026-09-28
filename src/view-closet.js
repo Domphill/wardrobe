@@ -204,7 +204,7 @@
         UI.pick({
           label,
           value: st[key] || '',
-          options: [{ value: '', label: 'Any' }].concat(options.map((o) => ({ value: o, label: o, swatch: swatches ? L.cutout.hexOfName(o) : null }))),
+          options: [{ value: '', label: 'Any' }].concat(options.map((o) => ({ value: o, label: o, swatch: swatches ? L.colour.hexOfName(o) : null }))),
           onChange: (v) => (st[key] = v)
         })
       );

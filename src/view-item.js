@@ -8,13 +8,42 @@
   const R = L.router;
   const M = L.model;
   const C = L.cutout;
+  const K = L.colour;
   const V = (L.views = L.views || {});
   const drafts = (L.drafts = L.drafts || {});
 
-  const colourChip = (c, onRemove) =>
-    h('span.colour-chip', h('span.swatch', { style: { background: c.hex } }), h('span', c.name), onRemove ? h('button.chip-x', { type: 'button', 'aria-label': 'Remove ' + c.name, onclick: onRemove }, UI.icon('x')) : null);
+  const MODES = [
+    { value: 'remove', label: 'Tap removes' },
+    { value: 'restore', label: 'Tap restores' },
+    { value: 'erase', label: 'Brush away' },
+    { value: 'keep', label: 'Brush back' },
+    { value: 'select', label: 'Select' },
+    { value: 'crop', label: 'Crop' }
+  ];
+  const BRUSHES = [
+    { value: 'small', label: 'Small', k: 0.02 },
+    { value: 'medium', label: 'Medium', k: 0.045 },
+    { value: 'large', label: 'Large', k: 0.08 }
+  ];
+  const COLOUR_GROUPS = [
+    ['Neutrals', ['Black', 'Charcoal', 'Grey', 'Light grey', 'White', 'Cream', 'Beige']],
+    ['Earthy', ['Tan', 'Brown', 'Khaki', 'Olive', 'Sage']],
+    ['Blues and greens', ['Green', 'Teal', 'Light blue', 'Denim', 'Blue', 'Navy']],
+    ['Purples and pinks', ['Lilac', 'Purple', 'Pink', 'Burgundy']],
+    ['Warm', ['Red', 'Orange', 'Mustard', 'Yellow']]
+  ];
 
-  /* Logs an item or outfit as worn (or planned) on a day. */
+  const colourChip = (c, opts) => {
+    opts = opts || {};
+    const body = [h('span.swatch', { style: { background: c.hex } }), h('span', c.name)];
+    return h(
+      'span.colour-chip' + (opts.main ? '.main' : ''),
+      opts.onMain ? h('button.chip-main', { type: 'button', title: opts.main ? 'Main colour' : 'Make this the main colour', 'aria-label': c.name + (opts.main ? ', main colour' : ', make main colour'), onclick: opts.onMain }, body) : h('span.chip-main', body),
+      opts.onRemove ? h('button.chip-x', { type: 'button', 'aria-label': 'Remove ' + c.name, onclick: opts.onRemove }, UI.icon('x')) : null
+    );
+  };
+
+  /* Logs an item, several items or an outfit as worn (or planned) on a day. */
   V.logWear = async (day, patch) => {
     const rec = D.get('days', day) || { id: day, day, outfits: [], items: [], note: '' };
     if (patch.item && !rec.items.includes(patch.item)) rec.items.push(patch.item);
@@ -47,7 +76,8 @@
       const w = M.wears(it.id);
       const cpw = M.costPerWear(it, w.count);
       const outfits = D.list('outfits').filter((o) => (o.items || []).some((x) => x.id === it.id));
-      UI.append(root, 
+      UI.append(
+        root,
         h(
           'div.page-head.split',
           h('button.back-btn', { type: 'button', onclick: () => R.back('closet') }, UI.icon('back'), h('span', 'Closet')),
@@ -126,12 +156,13 @@
       const st =
         drafts.edit && drafts.edit.id === id
           ? drafts.edit
-          : (drafts.edit = { id, tol: 35, mode: 'remove', history: [], canvas: null, img: null, mask: null, useOriginal: false, f: Object.assign(blank(), editing ? U.clone(editing) : {}) });
+          : (drafts.edit = { id, tol: 35, mode: 'remove', brush: 'medium', smart: true, history: [], canvas: null, img: null, mask: null, sel: null, bg: null, crop: null, guess: null, useOriginal: false, f: Object.assign(blank(), editing ? U.clone(editing) : {}) });
       const f = st.f;
       const err = h('p.form-error', { role: 'alert' });
       const photoBox = h('div.photo-box');
       const form = h('div.form');
       let busy = null;
+      let setMode = () => {};
 
       /* ----- photo ----- */
       const pickPhoto = (capture) => {
@@ -145,18 +176,29 @@
         document.body.appendChild(input);
         input.click();
       };
+      const cut = () => (st.useOriginal ? st.canvas : C.apply(st.canvas, st.mask));
+      const detectColours = () => K.colours(C.crop(cut()), 3, { bg: st.useOriginal ? null : st.bg }).map((c) => ({ hex: c.hex, name: c.name }));
       async function loadPhoto(file) {
         busy = UI.busy('Cutting it out…');
         try {
           await U.sleep(30);
           st.canvas = await C.load(file);
           st.img = st.canvas.getContext('2d').getImageData(0, 0, st.canvas.width, st.canvas.height);
+          st.bg = C.background(st.img);
           st.mask = C.auto(st.img, st.tol);
           st.history = [];
+          st.crop = null;
+          st.sel = null;
+          st.mode = 'remove';
           st.useOriginal = C.coverage(st.mask) > 0.985 || C.coverage(st.mask) < 0.01;
           st.preview = null;
-          f.colours = C.colours(C.apply(st.canvas, st.mask)).slice(0, 3).map((c) => ({ hex: c.hex, name: c.name }));
-          if (!f.name && f.type) f.name = suggestName();
+          const cutout = C.crop(C.apply(st.canvas, st.mask));
+          f.colours = K.colours(cutout, 3, { bg: st.bg }).map((c) => ({ hex: c.hex, name: c.name }));
+          st.guess = st.useOriginal ? null : K.guessKind(cutout, f.colours);
+          if (st.guess && st.guess.confidence !== 'low' && !editing && !f.type) {
+            f.category = st.guess.category;
+            f.type = st.guess.type;
+          }
         } catch (e) {
           UI.toast((e && e.message) || 'That photo couldn’t be opened.');
         } finally {
@@ -167,96 +209,398 @@
         paintForm();
       }
       V.edit.loadPhoto = loadPhoto;
-      const cut = () => (st.useOriginal ? st.canvas : C.apply(st.canvas, st.mask));
+
       function paintPhoto() {
         UI.clear(photoBox);
         if (!st.canvas) {
-          UI.append(photoBox, 
+          UI.append(
+            photoBox,
             editing && editing.image ? h('div.photo-current', UI.pic(editing.image, editing.name)) : h('div.photo-tips', UI.icon('camera'), h('p', 'Lay the item flat on a plain background, like a bed sheet, a wall or the floor, with even light and no shadows across it.')),
             h('div.actions.center', UI.btn(editing ? 'New photo' : 'Take a photo', () => pickPhoto(true), { kind: 'primary', icon: 'camera', id: 'photo-camera' }), UI.btn('Choose a photo', () => pickPhoto(false), { icon: 'image', id: 'photo-pick' }))
           );
           return;
         }
         const view = h('canvas.cut-view', { 'aria-label': 'The cut-out. Tap to remove or bring back an area.' });
-        const draw = () => {
+        const over = h('canvas.cut-overlay', { 'aria-hidden': 'true' });
+        const wrap = h('div.cut-wrap', view, over);
+        const W = () => st.img.width;
+        const H = () => st.img.height;
+        const octx = () => over.getContext('2d');
+        /* image pixels per screen pixel */
+        const scale = () => {
+          const rect = view.getBoundingClientRect();
+          return rect.width ? view.width / rect.width : 1;
+        };
+        const toImg = (e) => {
+          const rect = view.getBoundingClientRect();
+          return { x: U.clamp(((e.clientX - rect.left) * view.width) / rect.width, 0, W() - 1), y: U.clamp(((e.clientY - rect.top) * view.height) / rect.height, 0, H() - 1) };
+        };
+        const corners = (r) => [
+          [r.x0, r.y0],
+          [r.x1, r.y0],
+          [r.x1, r.y1],
+          [r.x0, r.y1]
+        ];
+        let selLayer = null;
+        function renderSelection() {
+          if (!st.sel) {
+            selLayer = null;
+            return;
+          }
+          const w = W();
+          const hh = H();
+          selLayer = document.createElement('canvas');
+          selLayer.width = w;
+          selLayer.height = hh;
+          const ctx = selLayer.getContext('2d');
+          const im = ctx.createImageData(w, hh);
+          for (let p = 0, i = 0; p < w * hh; p++, i += 4) {
+            if (!st.sel[p]) continue;
+            im.data[i] = 40;
+            im.data[i + 1] = 120;
+            im.data[i + 2] = 255;
+            im.data[i + 3] = 120;
+          }
+          ctx.putImageData(im, 0, 0);
+        }
+        function drawOverlay() {
+          const ctx = octx();
+          ctx.clearRect(0, 0, over.width, over.height);
+          if (st.useOriginal) return;
+          if (st.mode === 'select' && selLayer) ctx.drawImage(selLayer, 0, 0);
+          if (st.mode !== 'crop') return;
+          const r = st.crop || (st.crop = { x0: 0, y0: 0, x1: W(), y1: H() });
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+          ctx.fillRect(0, 0, over.width, r.y0);
+          ctx.fillRect(0, r.y1, over.width, over.height - r.y1);
+          ctx.fillRect(0, r.y0, r.x0, r.y1 - r.y0);
+          ctx.fillRect(r.x1, r.y0, over.width - r.x1, r.y1 - r.y0);
+          const s = scale();
+          ctx.lineWidth = 2 * s;
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+          ctx.lineWidth = 1.5 * s;
+          for (const [x, y] of corners(r)) {
+            ctx.beginPath();
+            ctx.arc(x, y, 13 * s, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        function draw() {
           const res = cut();
           st.preview = res;
           const shown = C.checker(res);
-          view.width = shown.width;
-          view.height = shown.height;
+          view.width = over.width = shown.width;
+          view.height = over.height = shown.height;
           view.getContext('2d').drawImage(shown, 0, 0);
+          drawOverlay();
+        }
+        const trimHistory = () => {
+          while (st.history.length > 8) st.history.shift();
         };
-        draw();
-        let downAt = null;
-        view.addEventListener('pointerdown', (e) => (downAt = { x: e.clientX, y: e.clientY }));
-        view.addEventListener('pointerup', (e) => {
-          if (!downAt || st.useOriginal) return;
-          const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
-          downAt = null;
-          if (moved > 8) return;
-          const rect = view.getBoundingClientRect();
-          const x = ((e.clientX - rect.left) * view.width) / rect.width;
-          const y = ((e.clientY - rect.top) * view.height) / rect.height;
-          V.edit.tapAt(x, y);
-        });
-        V.edit.tapAt = (x, y) => {
+        const pushHistory = () => {
           st.history.push(st.mask.slice());
-          if (st.history.length > 8) st.history.shift();
+          trimHistory();
+          undo.disabled = false;
+        };
+        const radius = () => Math.max(3, Math.round(Math.max(W(), H()) * (BRUSHES.find((b) => b.value === st.brush) || BRUSHES[1]).k));
+        function strokeTo(p, val, first) {
+          const r = radius();
+          const from = first ? p : st.last;
+          const dx = p.x - from.x;
+          const dy = p.y - from.y;
+          const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (r / 2)));
+          const selecting = st.mode === 'select';
+          if (selecting && !st.sel) st.sel = new Uint8Array(W() * H());
+          for (let i = first ? 0 : 1; i <= n; i++) {
+            const x = from.x + (dx * i) / n;
+            const y = from.y + (dy * i) / n;
+            if (selecting) {
+              C.paint(st.sel, W(), H(), x, y, r, 1);
+              if (st.smart) C.smartSelect(st.img, st.mask, st.sel, x, y, r * 2.5, Math.max(10, st.tol - 10));
+            } else C.paint(st.mask, W(), H(), x, y, r, val);
+          }
+          const ctx = octx();
+          ctx.strokeStyle = selecting ? 'rgba(40, 120, 255, 0.5)' : val ? 'rgba(46, 190, 120, 0.55)' : 'rgba(230, 60, 60, 0.55)';
+          ctx.lineWidth = r * 2;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          st.last = p;
+        }
+        over.addEventListener('pointerdown', (e) => {
+          if (st.useOriginal || (e.button != null && e.button !== 0)) return;
+          const p = toImg(e);
+          st.down = { x: e.clientX, y: e.clientY };
+          if (st.mode === 'erase' || st.mode === 'keep' || st.mode === 'select') {
+            e.preventDefault();
+            try {
+              over.setPointerCapture(e.pointerId);
+            } catch (err2) {
+              /* synthetic events have no pointer to capture */
+            }
+            if (st.mode !== 'select') pushHistory();
+            st.painting = true;
+            strokeTo(p, st.mode === 'keep' ? 1 : 0, true);
+          } else if (st.mode === 'crop') {
+            e.preventDefault();
+            try {
+              over.setPointerCapture(e.pointerId);
+            } catch (err2) {
+              /* ignore */
+            }
+            const r = st.crop || (st.crop = { x0: 0, y0: 0, x1: W(), y1: H() });
+            const grab = 24 * scale();
+            const c = corners(r).findIndex(([x, y]) => Math.hypot(x - p.x, y - p.y) <= grab);
+            st.drag = c >= 0 ? { corner: c } : p.x > r.x0 && p.x < r.x1 && p.y > r.y0 && p.y < r.y1 ? { move: true, start: p, rect: Object.assign({}, r) } : null;
+          }
+        });
+        over.addEventListener('pointermove', (e) => {
+          if (st.painting) strokeTo(toImg(e), st.mode === 'keep' ? 1 : 0, false);
+          else if (st.drag) {
+            const p = toImg(e);
+            const r = st.crop;
+            if (st.drag.move) {
+              const w = st.drag.rect.x1 - st.drag.rect.x0;
+              const hh = st.drag.rect.y1 - st.drag.rect.y0;
+              r.x0 = U.clamp(st.drag.rect.x0 + (p.x - st.drag.start.x), 0, W() - w);
+              r.y0 = U.clamp(st.drag.rect.y0 + (p.y - st.drag.start.y), 0, H() - hh);
+              r.x1 = r.x0 + w;
+              r.y1 = r.y0 + hh;
+            } else {
+              const c = st.drag.corner;
+              if (c === 0 || c === 3) r.x0 = Math.min(p.x, r.x1 - 20);
+              else r.x1 = Math.max(p.x, r.x0 + 20);
+              if (c === 0 || c === 1) r.y0 = Math.min(p.y, r.y1 - 20);
+              else r.y1 = Math.max(p.y, r.y0 + 20);
+            }
+            drawOverlay();
+          }
+        });
+        const end = (e) => {
+          if (st.painting) {
+            st.painting = false;
+            if (st.mode === 'select') {
+              renderSelection();
+              drawOverlay();
+              paintTools();
+            } else draw();
+          } else if (st.drag) {
+            st.drag = null;
+            drawOverlay();
+          } else if (st.down && (st.mode === 'remove' || st.mode === 'restore' || st.mode === 'pick')) {
+            const moved = Math.hypot(e.clientX - st.down.x, e.clientY - st.down.y);
+            if (moved <= 8) {
+              const p = toImg(e);
+              if (st.mode === 'pick') pickAt(p.x, p.y);
+              else V.edit.tapAt(p.x, p.y);
+            }
+          }
+          st.down = null;
+        };
+        over.addEventListener('pointerup', end);
+        over.addEventListener('pointercancel', end);
+
+        V.edit.tapAt = (x, y) => {
+          pushHistory();
           const changed = C.tap(st.img, st.mask, x, y, st.tol, st.mode === 'remove');
           if (!changed) {
             st.history.pop();
+            undo.disabled = !st.history.length;
             UI.toast(st.mode === 'remove' ? 'Nothing to remove there. Tap on part of the item that should go.' : 'Nothing to bring back there.');
             return;
           }
           draw();
-          undo.disabled = !st.history.length;
         };
+        function pickAt(x, y) {
+          const rgb = C.sample(st.img, x, y, 5);
+          const fixed = K.correct(rgb, st.bg);
+          const c = { hex: K.hex(fixed), name: K.name(fixed) };
+          f.colours = (f.colours || []).filter((o) => o.name !== c.name);
+          if (f.colours.length >= 3) f.colours.pop();
+          f.colours.push(c);
+          UI.toast('Added ' + c.name);
+          setMode(st.prevMode || 'remove');
+          paintForm();
+        }
+        function useSelection(keepOnly) {
+          if (!st.sel) return UI.toast('Brush over the area first.');
+          pushHistory();
+          const m = st.mask;
+          const s = st.sel;
+          for (let p = 0; p < m.length; p++) if (keepOnly ? !s[p] : s[p]) m[p] = 0;
+          if (keepOnly) C.tidy(m, W(), H());
+          st.sel = null;
+          selLayer = null;
+          draw();
+          paintTools();
+          UI.toast(keepOnly ? 'Kept just the selected part.' : 'Removed the selected part.');
+        }
+        function applyCrop() {
+          const r = st.crop;
+          if (!r || r.x1 - r.x0 < 20 || r.y1 - r.y0 < 20) return;
+          st.history.push({ canvas: st.canvas, img: st.img, mask: st.mask });
+          trimHistory();
+          const res = C.cropRect(st.canvas, st.mask, r);
+          st.canvas = res.canvas;
+          st.img = res.img;
+          st.mask = res.mask;
+          st.crop = null;
+          st.mode = 'remove';
+          paintPhoto();
+        }
         const undo = UI.btn('Undo', () => {
           if (!st.history.length) return;
-          st.mask = st.history.pop();
-          draw();
-          undo.disabled = !st.history.length;
+          const entry = st.history.pop();
+          if (entry instanceof Uint8Array) {
+            st.mask = entry;
+            draw();
+            undo.disabled = !st.history.length;
+          } else {
+            st.canvas = entry.canvas;
+            st.img = entry.img;
+            st.mask = entry.mask;
+            st.crop = null;
+            paintPhoto();
+          }
         }, { small: true, icon: 'undo', kind: 'ghost', id: 'cut-undo' });
         undo.disabled = !st.history.length;
-        const tol = h('input.range#cut-tol', { type: 'range', min: '5', max: '90', step: '5', value: String(st.tol), 'aria-label': 'How much to remove' });
-        tol.addEventListener('change', () => {
-          st.tol = Number(tol.value);
-          st.history = [];
-          st.mask = C.auto(st.img, st.tol);
-          draw();
-          undo.disabled = true;
-        });
-        const modeSeg = UI.segmented({
-          label: 'What a tap does',
-          value: st.mode,
-          options: [
-            { value: 'remove', label: 'Tap removes' },
-            { value: 'restore', label: 'Tap brings back' }
-          ],
-          onChange: (v) => (st.mode = v)
-        });
-        const original = h('label.check-row', h('input#cut-original', { type: 'checkbox', checked: st.useOriginal, onchange: (e) => {
-          st.useOriginal = e.target.checked;
-          draw();
-          tools.hidden = st.useOriginal;
-        } }), h('span', 'Keep the whole photo instead'));
+
+        /* ----- tools ----- */
+        const hint = h('p.hint');
+        const toolsBox = h('div.tool-box');
+        const modes = UI.pick({ label: 'What a touch does', value: st.mode === 'pick' ? st.prevMode || 'remove' : st.mode, options: MODES, onChange: (v) => setMode(v) });
+        modes.id = 'cut-modes';
+        setMode = (v) => {
+          st.mode = v;
+          if (v !== 'pick') st.prevMode = v;
+          if (v === 'crop' && !st.crop) st.crop = { x0: Math.round(W() * 0.05), y0: Math.round(H() * 0.05), x1: Math.round(W() * 0.95), y1: Math.round(H() * 0.95) };
+          wrap.style.touchAction = v === 'erase' || v === 'keep' || v === 'select' || v === 'crop' ? 'none' : 'manipulation';
+          for (const b of modes.children) b.setAttribute('aria-checked', String(b.dataset.value === (v === 'pick' ? '' : v)));
+          drawOverlay();
+          paintTools();
+        };
+        function paintTools() {
+          UI.clear(toolsBox);
+          const m = st.mode;
+          hint.textContent =
+            m === 'remove'
+              ? 'The background has gone. If some is left, or the item was on a person, tap the part that should go. Similar colours next to it go with it.'
+              : m === 'restore'
+                ? 'Tap a part of the item that went missing to bring it back.'
+                : m === 'erase'
+                  ? 'Drag over anything that isn’t the item, like the rest of an outfit, an arm, or a hanger.'
+                  : m === 'keep'
+                    ? 'Drag over parts of the item that should be kept.'
+                    : m === 'select'
+                      ? 'Brush over an area to select it; the selection snaps to similar colours, like a quick-select tool. Then keep just that, or remove it.'
+                      : m === 'crop'
+                        ? 'Drag the corners round the item, or drag the box to move it, then apply.'
+                        : 'Tap the photo where the colour is.';
+          if (m === 'remove' || m === 'restore') {
+            const tol = h('input.range#cut-tol', { type: 'range', min: '5', max: '90', step: '5', value: String(st.tol), 'aria-label': 'How much a tap takes' });
+            tol.addEventListener('change', () => {
+              st.tol = Number(tol.value);
+              if (!st.history.length) {
+                st.mask = C.auto(st.img, st.tol);
+                draw();
+              } else UI.toast('The next tap will use the new setting.');
+            });
+            toolsBox.appendChild(h('div.range-row', h('span.label', 'Less'), tol, h('span.label', 'More')));
+          } else if (m === 'erase' || m === 'keep') {
+            toolsBox.appendChild(h('div.field', h('span.label', 'Brush size'), UI.pick({ label: 'Brush size', value: st.brush, options: BRUSHES, onChange: (v) => (st.brush = v) })));
+          } else if (m === 'select') {
+            const has = !!st.sel;
+            UI.append(
+              toolsBox,
+              h('div.field', h('span.label', 'Brush size'), UI.pick({ label: 'Brush size', value: st.brush, options: BRUSHES, onChange: (v) => (st.brush = v) })),
+              h('label.check-row', h('input#sel-smart', { type: 'checkbox', checked: st.smart, onchange: (e) => (st.smart = e.target.checked) }), h('span', 'Snap to similar colours')),
+              h(
+                'div.actions',
+                UI.btn('Keep only this', () => useSelection(true), { small: true, kind: 'primary', icon: 'check', id: 'sel-keep', disabled: !has }),
+                UI.btn('Remove this', () => useSelection(false), { small: true, kind: 'ghost', icon: 'eraser', id: 'sel-remove', disabled: !has }),
+                UI.btn('Clear', () => {
+                  st.sel = null;
+                  selLayer = null;
+                  drawOverlay();
+                  paintTools();
+                }, { small: true, kind: 'ghost', id: 'sel-clear', disabled: !has })
+              )
+            );
+          } else if (m === 'crop') {
+            toolsBox.appendChild(h('div.actions', UI.btn('Apply crop', applyCrop, { small: true, kind: 'primary', icon: 'check', id: 'crop-apply' }), UI.btn('Reset', () => {
+              st.crop = null;
+              drawOverlay();
+            }, { small: true, kind: 'ghost' })));
+          }
+        }
         const tools = h(
           'div.cut-tools',
           { hidden: st.useOriginal },
-          h('p.hint', 'The background has been removed. If some of it is left, tap it. If part of the item went missing, switch to bring back and tap it.'),
-          modeSeg,
-          h('div.range-row', h('span.label', 'Less'), tol, h('span.label', 'More')),
-          h('div.actions', undo, UI.btn('Detect colours again', () => {
-            f.colours = C.colours(cut()).slice(0, 3).map((c) => ({ hex: c.hex, name: c.name }));
-            paintForm();
-          }, { small: true, icon: 'palette', kind: 'ghost' }))
+          hint,
+          modes,
+          toolsBox,
+          h(
+            'div.actions',
+            undo,
+            UI.btn('Remove skin', () => {
+              pushHistory();
+              const n = C.skin(st.img, st.mask);
+              if (!n) {
+                st.history.pop();
+                undo.disabled = !st.history.length;
+                UI.toast('No skin found in the cut-out.');
+                return;
+              }
+              C.tidy(st.mask, W(), H());
+              draw();
+              UI.toast('Skin removed. Undo if it took too much.');
+            }, { small: true, kind: 'ghost', icon: 'eraser', id: 'cut-skin' }),
+            UI.btn('Detect colours again', () => {
+              f.colours = detectColours();
+              paintForm();
+            }, { small: true, icon: 'palette', kind: 'ghost' })
+          )
         );
-        UI.append(photoBox, 
-          h('div.cut-wrap', view),
-          tools,
-          original,
-          h('div.actions', UI.btn('Different photo', () => pickPhoto(false), { small: true, icon: 'image', kind: 'ghost' }), UI.btn('Retake', () => pickPhoto(true), { small: true, icon: 'camera', kind: 'ghost' }))
-        );
+        const original = h('label.check-row', h('input#cut-original', { type: 'checkbox', checked: st.useOriginal, onchange: (e) => {
+          st.useOriginal = e.target.checked;
+          tools.hidden = st.useOriginal;
+          draw();
+        } }), h('span', 'Keep the whole photo instead'));
+        UI.append(photoBox, wrap, tools, original, h('div.actions', UI.btn('Different photo', () => pickPhoto(false), { small: true, icon: 'image', kind: 'ghost' }), UI.btn('Retake', () => pickPhoto(true), { small: true, icon: 'camera', kind: 'ghost' })));
+        renderSelection();
+        draw();
+        setMode(st.mode === 'pick' ? st.prevMode || 'remove' : st.mode);
+        /* for the tests */
+        V.edit.tools = {
+          stroke: (mode, pts) => {
+            setMode(mode);
+            if (mode !== 'select') pushHistory();
+            pts.forEach((p, i) => strokeTo(p, mode === 'keep' ? 1 : 0, i === 0));
+            if (mode === 'select') {
+              renderSelection();
+              drawOverlay();
+              paintTools();
+            } else draw();
+          },
+          keepSelected: () => useSelection(true),
+          removeSelected: () => useSelection(false),
+          crop: (r) => {
+            st.crop = r;
+            applyCrop();
+          },
+          skin: () => tools.querySelector('#cut-skin').click(),
+          pick: (x, y) => pickAt(x, y),
+          setMode,
+          undo: () => undo.click(),
+          overlay: over
+        };
       }
 
       /* ----- details ----- */
@@ -269,7 +613,11 @@
         UI.clear(form);
         const cat = M.cat(f.category);
         const nameIn = h('input.input#f-name', { type: 'text', maxlength: 60, value: f.name, placeholder: suggestName() || 'What is it?', oninput: (e) => (f.name = e.target.value) });
-        UI.append(form, 
+        const g = st.guess;
+        const article = (t) => (/^[aeiou]/i.test(t) ? 'an ' : 'a ') + (/^[A-Z]-/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
+        UI.append(
+          form,
+          g && g.confidence !== 'low' && !editing ? h('p.hint.guess-note', { id: 'guess-note' }, 'Looks like ' + (g.type === 'Trainers' ? 'shoes' : g.type === 'Shorts' || g.type === 'Trousers' || g.type === 'Jeans' ? g.type.toLowerCase() : article(g.type)) + ', going by its ' + g.why + '. Change it below if that’s wrong.') : null,
           UI.field('Name', nameIn),
           h(
             'div.grid-2',
@@ -315,19 +663,36 @@
           h(
             'div.field',
             h('span.label', 'Colours'),
+            (f.colours || []).length > 1 ? h('span.help', 'The first one is the main colour. Tap another to make it the main one.') : null,
             h(
               'div.colour-row',
               (f.colours || []).map((c, i) =>
-                colourChip(c, () => {
-                  f.colours.splice(i, 1);
-                  paintForm();
+                colourChip(c, {
+                  main: i === 0,
+                  onMain: () => {
+                    if (i === 0) return;
+                    f.colours.splice(i, 1);
+                    f.colours.unshift(c);
+                    paintForm();
+                  },
+                  onRemove: () => {
+                    f.colours.splice(i, 1);
+                    paintForm();
+                  }
                 })
               ),
               (f.colours || []).length < 3
-                ? h('button.chip.chip-add', { type: 'button', onclick: () => colourSheet((c) => {
-                  f.colours = (f.colours || []).concat([c]);
+                ? h('button.chip.chip-add#colour-add', { type: 'button', onclick: () => colourSheet((c) => {
+                  f.colours = (f.colours || []).filter((o) => o.name !== c.name).concat([c]);
                   paintForm();
-                }) }, UI.icon('plus'), h('span', 'Add a colour'))
+                }) }, UI.icon('plus'), h('span', 'Choose a colour'))
+                : null,
+              st.canvas && !st.useOriginal
+                ? h('button.chip.chip-add#colour-pick', { type: 'button', onclick: () => {
+                  setMode('pick');
+                  UI.toast('Tap the photo where the colour is.');
+                  photoBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } }, UI.icon('palette'), h('span', 'Pick from the photo'))
                 : null
             )
           ),
@@ -355,7 +720,7 @@
         f.name = (f.name || '').trim() || suggestName();
         if (!f.name) return (err.textContent = 'Give it a name, or choose a type.');
         if (!st.canvas && !(editing && editing.image)) return (err.textContent = 'Add a photo first.');
-        if (f.price !== '' && !(Number(f.price) >= 0)) return (err.textContent = 'The price should be a number.');
+        if (f.price !== '' && f.price != null && !(Number(f.price) >= 0)) return (err.textContent = 'The price should be a number.');
         busy = UI.busy('Saving…');
         try {
           await U.sleep(20);
@@ -372,7 +737,7 @@
             image = newImage;
             thumb = newThumb;
           }
-          const rec = Object.assign({}, editing || {}, f, { image, thumb, price: f.price === '' ? null : Number(f.price), status: 'active' });
+          const rec = Object.assign({}, editing || {}, f, { image, thumb, price: f.price === '' || f.price == null ? null : Number(f.price), status: 'active' });
           const saved = await D.put('items', rec);
           drafts.edit = null;
           UI.toast(editing ? 'Saved' : 'Added to your closet');
@@ -386,7 +751,8 @@
         }
       }
 
-      UI.append(root, 
+      UI.append(
+        root,
         h(
           'div.page-head.split',
           h('button.back-btn', { type: 'button', onclick: () => {
@@ -407,11 +773,20 @@
 
   function colourSheet(onPick) {
     const s = UI.sheet({
-      title: 'Add a colour',
-      body: h('div.colour-grid', C.NAMES.map((n) => h('button.colour-opt', { type: 'button', onclick: () => {
-        s.close();
-        onPick({ hex: C.hexOfName(n[0]), name: n[0] });
-      } }, h('span.swatch.big', { style: { background: C.hexOfName(n[0]) } }), h('span', n[0]))))
+      title: 'Choose a colour',
+      body: h(
+        'div.colour-groups',
+        COLOUR_GROUPS.map(([title, names]) =>
+          h(
+            'div.colour-group',
+            h('h3.mini-title', title),
+            h('div.colour-grid', names.map((n) => h('button.colour-opt', { type: 'button', onclick: () => {
+              s.close();
+              onPick({ hex: K.hexOfName(n), name: n });
+            } }, h('span.swatch.big', { style: { background: K.hexOfName(n) } }), h('span', n))))
+          )
+        )
+      )
     });
   }
 })((window.Wardrobe = window.Wardrobe || {}));

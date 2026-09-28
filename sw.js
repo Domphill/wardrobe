@@ -2,7 +2,7 @@
    opens without a connection. Bump VERSION whenever a file in FILES changes, or phones keep using
    the old copy. Photos and records never pass through here: they live in the browser's own storage.
    Only caches named wardrobe-* are touched, because other apps share this origin. */
-const VERSION = 'wardrobe-v1';
+const VERSION = 'wardrobe-v2';
 const FILES = [
   './',
   'index.html',
@@ -28,6 +28,7 @@ const FILES = [
   'src/store.js',
   'src/ui.js',
   'src/cutout.js',
+  'src/colour.js',
   'src/model.js',
   'src/weather.js',
   'src/suggest.js',

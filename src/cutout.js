@@ -47,8 +47,9 @@
     const db = d[i + 2] - b;
     return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db);
   };
-  /* Tolerance 0..100 becomes a colour distance; 35 suits most plain backgrounds. */
-  const threshold = (t) => 20 + 6.5 * Math.min(100, Math.max(0, t));
+  /* Tolerance 0..100 becomes a colour distance; 35 suits most plain backgrounds without eating
+     dark clothes photographed on a mid-grey wall. */
+  const threshold = (t) => 30 + 3.4 * Math.min(100, Math.max(0, t));
 
   /* Grows a region from the given seeds over connected pixels that are within the tolerance of the
      reference colour and currently have the value `from` in the mask; sets them to `to`. */
@@ -306,89 +307,126 @@
     return res;
   };
 
-  /* ---------- colours ---------- */
-  C.NAMES = [
-    ['Black', 20, 20, 22],
-    ['White', 245, 245, 242],
-    ['Grey', 138, 140, 144],
-    ['Light grey', 200, 202, 205],
-    ['Charcoal', 60, 62, 66],
-    ['Navy', 30, 44, 84],
-    ['Blue', 46, 98, 190],
-    ['Light blue', 150, 190, 232],
-    ['Denim', 78, 108, 150],
-    ['Teal', 30, 130, 130],
-    ['Green', 50, 130, 70],
-    ['Olive', 110, 116, 60],
-    ['Sage', 160, 176, 140],
-    ['Yellow', 240, 210, 60],
-    ['Mustard', 200, 160, 40],
-    ['Orange', 236, 120, 40],
-    ['Red', 200, 40, 44],
-    ['Burgundy', 120, 30, 50],
-    ['Pink', 236, 140, 176],
-    ['Purple', 120, 60, 160],
-    ['Lilac', 190, 160, 220],
-    ['Brown', 110, 72, 44],
-    ['Tan', 190, 150, 100],
-    ['Beige', 220, 200, 170],
-    ['Cream', 245, 236, 214],
-    ['Khaki', 160, 150, 110]
-  ];
-  const hex = (r, g, b) => '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
-  C.nameOf = (rgb) => {
-    let best = C.NAMES[0];
-    let bd = Infinity;
-    for (const n of C.NAMES) {
-      const dr = rgb[0] - n[1];
-      const dg = rgb[1] - n[2];
-      const db = rgb[2] - n[3];
-      const dd = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
-      if (dd < bd) {
-        bd = dd;
-        best = n;
+  /* The photo's background colour, for correcting the lighting when naming colours. */
+  C.background = (img) => borderColour(img);
+
+  /* ---------- brushes, cropping, skin ---------- */
+  /* Paints a round spot of `val` into the mask. Returns how many pixels changed. */
+  C.paint = (mask, w, h, cx, cy, r, val) => {
+    const x0 = Math.max(0, Math.floor(cx - r));
+    const x1 = Math.min(w - 1, Math.ceil(cx + r));
+    const y0 = Math.max(0, Math.floor(cy - r));
+    const y1 = Math.min(h - 1, Math.ceil(cy + r));
+    const r2 = r * r;
+    let n = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const p = y * w + x;
+        if (mask[p] !== val) {
+          mask[p] = val;
+          n++;
+        }
       }
     }
-    return best[0];
+    return n;
   };
-  C.hexOfName = (name) => {
-    const n = C.NAMES.find((x) => x[0] === name);
-    return n ? hex(n[1], n[2], n[3]) : '#999999';
+  /* Keeps only a rectangle of the photo and its mask. */
+  C.cropRect = (canvas, mask, r) => {
+    const x0 = Math.max(0, Math.round(Math.min(r.x0, r.x1)));
+    const y0 = Math.max(0, Math.round(Math.min(r.y0, r.y1)));
+    const x1 = Math.min(canvas.width, Math.round(Math.max(r.x0, r.x1)));
+    const y1 = Math.min(canvas.height, Math.round(Math.max(r.y0, r.y1)));
+    const w = Math.max(1, x1 - x0);
+    const h = Math.max(1, y1 - y0);
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    out.getContext('2d').drawImage(canvas, x0, y0, w, h, 0, 0, w, h);
+    const m = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) m.set(mask.subarray((y0 + y) * canvas.width + x0, (y0 + y) * canvas.width + x0 + w), y * w);
+    return { canvas: out, img: out.getContext('2d').getImageData(0, 0, w, h), mask: m };
   };
-  /* The main colours of the visible pixels, most common first. */
-  C.colours = (canvas, count) => {
-    count = count || 3;
-    const w = canvas.width;
-    const h = canvas.height;
-    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
-    const bins = new Map();
-    const step = Math.max(1, Math.floor(Math.sqrt((w * h) / 40000)));
-    let total = 0;
-    for (let y = 0; y < h; y += step) {
-      for (let x = 0; x < w; x += step) {
-        const i = (y * w + x) * 4;
-        if (d[i + 3] < 200) continue;
-        const key = ((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4);
-        const b = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
-        b.n++;
-        b.r += d[i];
-        b.g += d[i + 1];
-        b.b += d[i + 2];
-        bins.set(key, b);
-        total++;
+  /* Removes skin-coloured pixels from the mask (a model's face, arms, legs). Returns how many. */
+  C.skin = (img, mask) => {
+    const d = img.data;
+    let n = 0;
+    for (let p = 0; p < mask.length; p++) {
+      if (!mask[p]) continue;
+      const i = p * 4;
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && r > 95 && g > 40 && b > 20 && r > g && r > b && r - Math.min(g, b) > 15) {
+        mask[p] = 0;
+        n++;
       }
     }
-    const list = [...bins.values()].map((b) => ({ n: b.n, rgb: [b.r / b.n, b.g / b.n, b.b / b.n] })).sort((a, b) => b.n - a.n);
-    const out = [];
-    for (const c of list) {
-      if (out.length >= count) break;
-      const near = out.find((o) => Math.sqrt(2 * (o.rgb[0] - c.rgb[0]) ** 2 + 4 * (o.rgb[1] - c.rgb[1]) ** 2 + 3 * (o.rgb[2] - c.rgb[2]) ** 2) < 70);
-      if (near) near.n += c.n;
-      else out.push({ n: c.n, rgb: c.rgb });
+    return n;
+  };
+  /* Selects the pixels near a point that look like it: the stroke snaps to the garment's edges.
+     Only kept pixels within `reach` of the point are considered. Returns how many were added. */
+  C.smartSelect = (img, mask, sel, cx, cy, reach, tol) => {
+    const w = img.width;
+    const h = img.height;
+    const d = img.data;
+    const x = Math.round(cx);
+    const y = Math.round(cy);
+    if (x < 0 || y < 0 || x >= w || y >= h || !mask[y * w + x]) return 0;
+    const i0 = (y * w + x) * 4;
+    const ref = [d[i0], d[i0 + 1], d[i0 + 2]];
+    const th = threshold(tol);
+    const r2 = reach * reach;
+    const seen = new Uint8Array(w * h);
+    const stack = [y * w + x];
+    seen[y * w + x] = 1;
+    let n = 0;
+    while (stack.length) {
+      const p = stack.pop();
+      if (!sel[p]) {
+        sel[p] = 1;
+        n++;
+      }
+      const px = p % w;
+      const py = (p - px) / w;
+      const next = [];
+      if (px > 0) next.push(p - 1);
+      if (px < w - 1) next.push(p + 1);
+      if (py > 0) next.push(p - w);
+      if (py < h - 1) next.push(p + w);
+      for (const q of next) {
+        if (seen[q] || !mask[q]) continue;
+        seen[q] = 1;
+        const qx = q % w;
+        const qy = (q - qx) / w;
+        if ((qx - cx) * (qx - cx) + (qy - cy) * (qy - cy) > r2) continue;
+        if (dist(d, q * 4, ref[0], ref[1], ref[2]) <= th) stack.push(q);
+      }
     }
-    return out
-      .filter((o) => total && o.n / total >= 0.06)
-      .sort((a, b) => b.n - a.n)
-      .map((o) => ({ hex: hex(o.rgb[0], o.rgb[1], o.rgb[2]), name: C.nameOf(o.rgb), share: Math.round((100 * o.n) / total) }));
+    return n;
+  };
+  /* The average colour of a small square of the photo. */
+  C.sample = (img, x, y, half) => {
+    const w = img.width;
+    const h = img.height;
+    const d = img.data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let n = 0;
+    for (let yy = Math.max(0, Math.round(y) - half); yy <= Math.min(h - 1, Math.round(y) + half); yy++) {
+      for (let xx = Math.max(0, Math.round(x) - half); xx <= Math.min(w - 1, Math.round(x) + half); xx++) {
+        const i = (yy * w + xx) * 4;
+        r += d[i];
+        g += d[i + 1];
+        b += d[i + 2];
+        n++;
+      }
+    }
+    return n ? [r / n, g / n, b / n] : [0, 0, 0];
   };
 })((window.Wardrobe = window.Wardrobe || {}));

@@ -7,7 +7,7 @@
   const D = L.data;
   const R = L.router;
   const M = L.model;
-  const C = L.cutout;
+  const K = L.colour;
   const V = (L.views = L.views || {});
 
   const bar = (label, n, max, extra, swatch) =>
@@ -92,7 +92,7 @@
       const colours = new Map();
       for (const it of items) for (const c of (it.colours || []).slice(0, 1)) colours.set(c.name, (colours.get(c.name) || 0) + 1);
       const byColour = [...colours.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-      if (byColour.length) root.appendChild(h('div.card', UI.sectionHead('Main colours'), h('div.wbars', byColour.map(([name, n]) => bar(name, n, byColour[0][1], null, C.hexOfName(name))))));
+      if (byColour.length) root.appendChild(h('div.card', UI.sectionHead('Main colours'), h('div.wbars', byColour.map(([name, n]) => bar(name, n, byColour[0][1], null, K.hexOfName(name))))));
     }
   };
 })((window.Wardrobe = window.Wardrobe || {}));

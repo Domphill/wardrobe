@@ -11,7 +11,7 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 
 ## What it does
 
-- **Closet:** photograph each piece against a plain background and the background is cut out automatically. Tap to tidy the cut-out if it needs it. Each item has a category, type, colours (detected from the photo), brand, size, price, seasons and occasions. Search and filter the lot.
+- **Closet:** photograph each piece against a plain background and the background is cut out automatically. Tap to tidy the cut-out if it needs it. The colours are read from the photo (the lighting is corrected using the background, so navy doesn't become black under a warm bulb) and the type is guessed from the outline: two legs are trousers, shoulders mean a top, and so on. Each item has a category, type, colours, brand, size, price, seasons and occasions. Search and filter the lot.
 - **Outfits:** put cut-outs together on a canvas, move and resize them, and save the combination.
 - **Calendar:** log what you wore each day, or plan an outfit for a day ahead.
 - **Today:** the Closet page suggests outfits for the day. Add your town under **More, Weather** and it uses the local forecast; without one it goes by the season. Ideas favour pieces that haven't been worn lately, and you can wear the idea, shuffle it, or save it as an outfit.
@@ -22,7 +22,8 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 
 - Lay the item flat on a plain, contrasting background: a bed sheet, a wall, a wooden floor.
 - Even light and no hard shadows across the item.
-- If some background is left, tap it. If part of the item disappeared, switch to *Tap brings back* and tap it. The slider changes how much is removed.
+- If some background is left, tap it. If part of the item disappeared, switch to *Tap restores* and tap it. The slider changes how much a tap takes.
+- For a photo of someone wearing the item: *Crop* to the item, *Brush away* the rest, or *Select* the item with a brush that snaps to its edges and tap *Keep only this*. *Remove skin* takes out arms, legs and faces in one go.
 - A white shirt on a white sheet won't work well: use a darker background for pale clothes.
 
 ## Where your things are kept

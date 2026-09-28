@@ -7,7 +7,7 @@
   const D = L.data;
   const R = L.router;
   const V = (L.views = L.views || {});
-  L.VERSION = '1.0.0';
+  L.VERSION = '1.1.0';
 
   const TABS = [
     { name: 'closet', label: 'Closet', icon: 'hanger', also: ['item', 'edit'] },

@@ -949,3 +949,45 @@ img.missing {
   flex: none;
   color: var(--primary);
 }
+
+/* ---------- the cut-out editor ---------- */
+.cut-wrap {
+  position: relative;
+}
+.cut-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: inherit;
+}
+.tool-box:empty {
+  display: none;
+}
+.colour-chip .chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.colour-chip.main {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.colour-groups {
+  display: grid;
+  gap: 14px;
+}
+.colour-group {
+  display: grid;
+  gap: 8px;
+}
+.colour-group .mini-title {
+  margin: 0;
+}
