@@ -12,14 +12,17 @@
   const V = (L.views = L.views || {});
   const drafts = (L.drafts = L.drafts || {});
 
-  const MODES = [
-    { value: 'remove', label: 'Tap removes' },
-    { value: 'restore', label: 'Tap restores' },
-    { value: 'erase', label: 'Brush away' },
-    { value: 'keep', label: 'Brush back' },
-    { value: 'select', label: 'Select' },
-    { value: 'crop', label: 'Crop' }
+  /* The editor's tools, like a paint program's palette. */
+  const TOOLS = [
+    { id: 'wand', label: 'Wand', icon: 'wand', modes: ['remove', 'restore'] },
+    { id: 'select', label: 'Select', icon: 'select', modes: ['select'] },
+    { id: 'paint', label: 'Paint', icon: 'brush', modes: ['paint'] },
+    { id: 'erase', label: 'Eraser', icon: 'eraser', modes: ['erase'] },
+    { id: 'keep', label: 'Restore', icon: 'restore', modes: ['keep'] },
+    { id: 'crop', label: 'Crop', icon: 'crop', modes: ['crop'] },
+    { id: 'pick', label: 'Dropper', icon: 'dropper', modes: ['pick'] }
   ];
+  const toolOf = (mode) => TOOLS.find((t) => t.modes.includes(mode)) || TOOLS[0];
   const BRUSHES = [
     { value: 'small', label: 'Small', k: 0.02 },
     { value: 'medium', label: 'Medium', k: 0.045 },
@@ -156,7 +159,26 @@
       const st =
         drafts.edit && drafts.edit.id === id
           ? drafts.edit
-          : (drafts.edit = { id, tol: 35, mode: 'remove', brush: 'medium', smart: true, history: [], canvas: null, img: null, mask: null, sel: null, bg: null, crop: null, guess: null, useOriginal: false, f: Object.assign(blank(), editing ? U.clone(editing) : {}) });
+          : (drafts.edit = {
+              id,
+              tol: 35,
+              mode: 'remove',
+              brush: 'medium',
+              smart: true,
+              paintColour: '#1f2b52',
+              paintBlend: 'shade',
+              pickFor: 'item',
+              history: [],
+              canvas: null,
+              img: null,
+              mask: null,
+              sel: null,
+              bg: null,
+              crop: null,
+              guess: null,
+              useOriginal: false,
+              f: Object.assign(blank(), editing ? U.clone(editing) : {})
+            });
       const f = st.f;
       const err = h('p.form-error', { role: 'alert' });
       const photoBox = h('div.photo-box');
@@ -220,7 +242,7 @@
           );
           return;
         }
-        const view = h('canvas.cut-view', { 'aria-label': 'The cut-out. Tap to remove or bring back an area.' });
+        const view = h('canvas.cut-view', { 'aria-label': 'The cut-out. Use the tools below it.' });
         const over = h('canvas.cut-overlay', { 'aria-hidden': 'true' });
         const wrap = h('div.cut-wrap', view, over);
         const W = () => st.img.width;
@@ -301,30 +323,34 @@
         const trimHistory = () => {
           while (st.history.length > 8) st.history.shift();
         };
-        const pushHistory = () => {
-          st.history.push(st.mask.slice());
+        /* what undo goes back to: the mask alone, or the photo's pixels too after painting */
+        const pushHistory = (withPixels) => {
+          st.history.push(withPixels ? { img: new ImageData(new Uint8ClampedArray(st.img.data), W(), H()), mask: st.mask.slice() } : st.mask.slice());
           trimHistory();
           undo.disabled = false;
         };
         const radius = () => Math.max(3, Math.round(Math.max(W(), H()) * (BRUSHES.find((b) => b.value === st.brush) || BRUSHES[1]).k));
-        function strokeTo(p, val, first) {
+        function strokeTo(p, first) {
           const r = radius();
           const from = first ? p : st.last;
           const dx = p.x - from.x;
           const dy = p.y - from.y;
           const n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / (r / 2)));
-          const selecting = st.mode === 'select';
-          if (selecting && !st.sel) st.sel = new Uint8Array(W() * H());
+          const mode = st.mode;
+          if (mode === 'select' && !st.sel) st.sel = new Uint8Array(W() * H());
+          const rgb = mode === 'paint' ? K.parseHex(st.paintColour) || [0, 0, 0] : null;
           for (let i = first ? 0 : 1; i <= n; i++) {
             const x = from.x + (dx * i) / n;
             const y = from.y + (dy * i) / n;
-            if (selecting) {
+            if (mode === 'select') {
               C.paint(st.sel, W(), H(), x, y, r, 1);
               if (st.smart) C.smartSelect(st.img, st.mask, st.sel, x, y, r * 2.5, Math.max(10, st.tol - 10));
-            } else C.paint(st.mask, W(), H(), x, y, r, val);
+            } else if (mode === 'paint') C.paintColour(st.img, st.mask, x, y, r, rgb, st.paintBlend);
+            else C.paint(st.mask, W(), H(), x, y, r, mode === 'keep' ? 1 : 0);
           }
           const ctx = octx();
-          ctx.strokeStyle = selecting ? 'rgba(40, 120, 255, 0.5)' : val ? 'rgba(46, 190, 120, 0.55)' : 'rgba(230, 60, 60, 0.55)';
+          ctx.strokeStyle = mode === 'select' ? 'rgba(40, 120, 255, 0.5)' : mode === 'paint' ? st.paintColour : mode === 'keep' ? 'rgba(46, 190, 120, 0.55)' : 'rgba(230, 60, 60, 0.55)';
+          ctx.globalAlpha = mode === 'paint' ? 0.85 : 1;
           ctx.lineWidth = r * 2;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
@@ -332,22 +358,24 @@
           ctx.moveTo(from.x, from.y);
           ctx.lineTo(p.x, p.y);
           ctx.stroke();
+          ctx.globalAlpha = 1;
           st.last = p;
         }
+        const BRUSH_MODES = ['erase', 'keep', 'select', 'paint'];
         over.addEventListener('pointerdown', (e) => {
           if (st.useOriginal || (e.button != null && e.button !== 0)) return;
           const p = toImg(e);
           st.down = { x: e.clientX, y: e.clientY };
-          if (st.mode === 'erase' || st.mode === 'keep' || st.mode === 'select') {
+          if (BRUSH_MODES.includes(st.mode)) {
             e.preventDefault();
             try {
               over.setPointerCapture(e.pointerId);
             } catch (err2) {
               /* synthetic events have no pointer to capture */
             }
-            if (st.mode !== 'select') pushHistory();
+            if (st.mode !== 'select') pushHistory(st.mode === 'paint');
             st.painting = true;
-            strokeTo(p, st.mode === 'keep' ? 1 : 0, true);
+            strokeTo(p, true);
           } else if (st.mode === 'crop') {
             e.preventDefault();
             try {
@@ -362,7 +390,7 @@
           }
         });
         over.addEventListener('pointermove', (e) => {
-          if (st.painting) strokeTo(toImg(e), st.mode === 'keep' ? 1 : 0, false);
+          if (st.painting) strokeTo(toImg(e), false);
           else if (st.drag) {
             const p = toImg(e);
             const r = st.crop;
@@ -383,15 +411,20 @@
             drawOverlay();
           }
         });
+        const finishStroke = () => {
+          st.painting = false;
+          if (st.mode === 'select') {
+            renderSelection();
+            drawOverlay();
+            paintTools();
+          } else {
+            if (st.mode === 'paint') st.canvas.getContext('2d').putImageData(st.img, 0, 0);
+            draw();
+          }
+        };
         const end = (e) => {
-          if (st.painting) {
-            st.painting = false;
-            if (st.mode === 'select') {
-              renderSelection();
-              drawOverlay();
-              paintTools();
-            } else draw();
-          } else if (st.drag) {
+          if (st.painting) finishStroke();
+          else if (st.drag) {
             st.drag = null;
             drawOverlay();
           } else if (st.down && (st.mode === 'remove' || st.mode === 'restore' || st.mode === 'pick')) {
@@ -422,6 +455,12 @@
           const rgb = C.sample(st.img, x, y, 5);
           const fixed = K.correct(rgb, st.bg);
           const c = { hex: K.hex(fixed), name: K.name(fixed) };
+          if (st.pickFor === 'paint') {
+            st.paintColour = K.hex(rgb);
+            UI.toast('Brush colour set to ' + c.name);
+            setMode('paint');
+            return;
+          }
           f.colours = (f.colours || []).filter((o) => o.name !== c.name);
           if (f.colours.length >= 3) f.colours.pop();
           f.colours.push(c);
@@ -452,6 +491,7 @@
           st.img = res.img;
           st.mask = res.mask;
           st.crop = null;
+          st.sel = null;
           st.mode = 'remove';
           paintPhoto();
         }
@@ -461,48 +501,72 @@
           if (entry instanceof Uint8Array) {
             st.mask = entry;
             draw();
-            undo.disabled = !st.history.length;
-          } else {
+          } else if (entry.canvas) {
             st.canvas = entry.canvas;
             st.img = entry.img;
             st.mask = entry.mask;
             st.crop = null;
+            st.sel = null;
             paintPhoto();
+            return;
+          } else {
+            st.img = entry.img;
+            st.mask = entry.mask;
+            st.canvas.getContext('2d').putImageData(st.img, 0, 0);
+            draw();
           }
+          undo.disabled = !st.history.length;
         }, { small: true, icon: 'undo', kind: 'ghost', id: 'cut-undo' });
         undo.disabled = !st.history.length;
 
-        /* ----- tools ----- */
+        /* ----- the tool palette ----- */
         const hint = h('p.hint');
         const toolsBox = h('div.tool-box');
-        const modes = UI.pick({ label: 'What a touch does', value: st.mode === 'pick' ? st.prevMode || 'remove' : st.mode, options: MODES, onChange: (v) => setMode(v) });
-        modes.id = 'cut-modes';
+        const bar = h('div.tool-bar', { role: 'radiogroup', 'aria-label': 'Tool', id: 'cut-tools-bar' });
+        for (const t of TOOLS) {
+          bar.appendChild(
+            h('button.tool-btn', { type: 'button', role: 'radio', 'data-tool': t.id, 'aria-checked': 'false', onclick: () => {
+              if (t.id === 'pick') st.pickFor = 'item';
+              setMode(t.id === 'wand' ? (st.wand === 'restore' ? 'restore' : 'remove') : t.modes[0]);
+            } }, UI.icon(t.icon), h('span', t.label))
+          );
+        }
+        const markTool = () => {
+          const active = toolOf(st.mode).id;
+          for (const b of bar.children) b.setAttribute('aria-checked', String(b.dataset.tool === active));
+        };
         setMode = (v) => {
           st.mode = v;
           if (v !== 'pick') st.prevMode = v;
           if (v === 'crop' && !st.crop) st.crop = { x0: Math.round(W() * 0.05), y0: Math.round(H() * 0.05), x1: Math.round(W() * 0.95), y1: Math.round(H() * 0.95) };
-          wrap.style.touchAction = v === 'erase' || v === 'keep' || v === 'select' || v === 'crop' ? 'none' : 'manipulation';
-          for (const b of modes.children) b.setAttribute('aria-checked', String(b.dataset.value === (v === 'pick' ? '' : v)));
+          wrap.style.touchAction = BRUSH_MODES.includes(v) || v === 'crop' ? 'none' : 'manipulation';
+          wrap.style.cursor = v === 'pick' ? 'crosshair' : BRUSH_MODES.includes(v) ? 'cell' : v === 'crop' ? 'move' : 'pointer';
+          markTool();
           drawOverlay();
           paintTools();
         };
+        const brushSize = () => h('div.field', h('span.label', 'Brush size'), UI.pick({ label: 'Brush size', value: st.brush, options: BRUSHES, onChange: (v) => (st.brush = v) }));
         function paintTools() {
           UI.clear(toolsBox);
           const m = st.mode;
           hint.textContent =
             m === 'remove'
-              ? 'The background has gone. If some is left, or the item was on a person, tap the part that should go. Similar colours next to it go with it.'
+              ? 'Tap a part that should go, like leftover background or the rest of an outfit. Similar colours next to it go with it.'
               : m === 'restore'
                 ? 'Tap a part of the item that went missing to bring it back.'
-                : m === 'erase'
-                  ? 'Drag over anything that isn’t the item, like the rest of an outfit, an arm, or a hanger.'
-                  : m === 'keep'
-                    ? 'Drag over parts of the item that should be kept.'
-                    : m === 'select'
-                      ? 'Brush over an area to select it; the selection snaps to similar colours, like a quick-select tool. Then keep just that, or remove it.'
-                      : m === 'crop'
-                        ? 'Drag the corners round the item, or drag the box to move it, then apply.'
-                        : 'Tap the photo where the colour is.';
+                : m === 'select'
+                  ? 'Brush over an area to select it; the selection snaps to similar colours. Then keep just that, or remove it.'
+                  : m === 'paint'
+                    ? 'Brush colour onto the item. Keep shading colours it like dye, so the folds and texture stay.'
+                    : m === 'erase'
+                      ? 'Drag over anything that shouldn’t be there. It becomes transparent.'
+                      : m === 'keep'
+                        ? 'Drag over parts of the item that were erased, to bring them back.'
+                        : m === 'crop'
+                          ? 'Drag the corners round the item, or drag the box to move it, then apply.'
+                          : st.pickFor === 'paint'
+                            ? 'Tap the photo to pick the brush colour.'
+                            : 'Tap the photo where the colour is, and it is added to the item’s colours.';
           if (m === 'remove' || m === 'restore') {
             const tol = h('input.range#cut-tol', { type: 'range', min: '5', max: '90', step: '5', value: String(st.tol), 'aria-label': 'How much a tap takes' });
             tol.addEventListener('change', () => {
@@ -512,14 +576,21 @@
                 draw();
               } else UI.toast('The next tap will use the new setting.');
             });
-            toolsBox.appendChild(h('div.range-row', h('span.label', 'Less'), tol, h('span.label', 'More')));
+            UI.append(
+              toolsBox,
+              UI.segmented({ label: 'What the wand does', value: m, options: [{ value: 'remove', label: 'Removes' }, { value: 'restore', label: 'Restores' }], onChange: (v) => {
+                st.wand = v;
+                setMode(v);
+              } }),
+              h('div.range-row', h('span.label', 'Less'), tol, h('span.label', 'More'))
+            );
           } else if (m === 'erase' || m === 'keep') {
-            toolsBox.appendChild(h('div.field', h('span.label', 'Brush size'), UI.pick({ label: 'Brush size', value: st.brush, options: BRUSHES, onChange: (v) => (st.brush = v) })));
+            toolsBox.appendChild(brushSize());
           } else if (m === 'select') {
             const has = !!st.sel;
             UI.append(
               toolsBox,
-              h('div.field', h('span.label', 'Brush size'), UI.pick({ label: 'Brush size', value: st.brush, options: BRUSHES, onChange: (v) => (st.brush = v) })),
+              brushSize(),
               h('label.check-row', h('input#sel-smart', { type: 'checkbox', checked: st.smart, onchange: (e) => (st.smart = e.target.checked) }), h('span', 'Snap to similar colours')),
               h(
                 'div.actions',
@@ -533,6 +604,27 @@
                 }, { small: true, kind: 'ghost', id: 'sel-clear', disabled: !has })
               )
             );
+          } else if (m === 'paint') {
+            UI.append(
+              toolsBox,
+              h(
+                'div.field',
+                h('span.label', 'Brush colour'),
+                h(
+                  'div.colour-row',
+                  h('button.colour-chip.chip-main#paint-colour', { type: 'button', 'aria-label': 'Change the brush colour', onclick: () => colourSheet((c) => {
+                    st.paintColour = c.hex;
+                    paintTools();
+                  }) }, h('span.swatch', { style: { background: st.paintColour } }), h('span', K.name(K.parseHex(st.paintColour) || [0, 0, 0]))),
+                  h('button.chip.chip-add#paint-pick', { type: 'button', onclick: () => {
+                    st.pickFor = 'paint';
+                    setMode('pick');
+                  } }, UI.icon('dropper'), h('span', 'From the photo'))
+                )
+              ),
+              brushSize(),
+              h('div.field', h('span.label', 'Blend'), UI.segmented({ label: 'Blend', value: st.paintBlend, options: [{ value: 'shade', label: 'Keep shading' }, { value: 'solid', label: 'Solid' }], onChange: (v) => (st.paintBlend = v) }))
+            );
           } else if (m === 'crop') {
             toolsBox.appendChild(h('div.actions', UI.btn('Apply crop', applyCrop, { small: true, kind: 'primary', icon: 'check', id: 'crop-apply' }), UI.btn('Reset', () => {
               st.crop = null;
@@ -543,8 +635,8 @@
         const tools = h(
           'div.cut-tools',
           { hidden: st.useOriginal },
+          bar,
           hint,
-          modes,
           toolsBox,
           h(
             'div.actions',
@@ -581,13 +673,9 @@
         V.edit.tools = {
           stroke: (mode, pts) => {
             setMode(mode);
-            if (mode !== 'select') pushHistory();
-            pts.forEach((p, i) => strokeTo(p, mode === 'keep' ? 1 : 0, i === 0));
-            if (mode === 'select') {
-              renderSelection();
-              drawOverlay();
-              paintTools();
-            } else draw();
+            if (mode !== 'select') pushHistory(mode === 'paint');
+            pts.forEach((p, i) => strokeTo(p, i === 0));
+            finishStroke();
           },
           keepSelected: () => useSelection(true),
           removeSelected: () => useSelection(false),
@@ -689,10 +777,11 @@
                 : null,
               st.canvas && !st.useOriginal
                 ? h('button.chip.chip-add#colour-pick', { type: 'button', onclick: () => {
+                  st.pickFor = 'item';
                   setMode('pick');
                   UI.toast('Tap the photo where the colour is.');
                   photoBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                } }, UI.icon('palette'), h('span', 'Pick from the photo'))
+                } }, UI.icon('dropper'), h('span', 'Pick from the photo'))
                 : null
             )
           ),

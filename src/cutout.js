@@ -409,6 +409,44 @@
     }
     return n;
   };
+  /* Paints colour onto the kept part of the photo. 'shade' works like dye: the fabric's own light
+     and shadow stay and only the colour changes; 'solid' paints flat colour. */
+  C.paintColour = (img, mask, cx, cy, r, rgb, blend) => {
+    const K = L.colour;
+    const w = img.width;
+    const h = img.height;
+    const d = img.data;
+    const target = K.rgbToLab(rgb[0], rgb[1], rgb[2]);
+    const x0 = Math.max(0, Math.floor(cx - r));
+    const x1 = Math.min(w - 1, Math.ceil(cx + r));
+    const y0 = Math.max(0, Math.floor(cy - r));
+    const y1 = Math.min(h - 1, Math.ceil(cy + r));
+    const r2 = r * r;
+    let n = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        if (dx * dx + dy * dy > r2) continue;
+        const p = y * w + x;
+        if (!mask[p]) continue;
+        const i = p * 4;
+        if (blend === 'solid') {
+          d[i] = rgb[0];
+          d[i + 1] = rgb[1];
+          d[i + 2] = rgb[2];
+        } else {
+          const lab = K.rgbToLab(d[i], d[i + 1], d[i + 2]);
+          const out = K.labToRgb(0.65 * lab[0] + 0.35 * target[0], target[1], target[2]);
+          d[i] = out[0];
+          d[i + 1] = out[1];
+          d[i + 2] = out[2];
+        }
+        n++;
+      }
+    }
+    return n;
+  };
   /* The average colour of a small square of the photo. */
   C.sample = (img, x, y, half) => {
     const w = img.width;

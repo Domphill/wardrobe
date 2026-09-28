@@ -23,7 +23,8 @@ Open it at **<https://domphill.github.io/wardrobe/>**. There is no account and n
 - Lay the item flat on a plain, contrasting background: a bed sheet, a wall, a wooden floor.
 - Even light and no hard shadows across the item.
 - If some background is left, tap it. If part of the item disappeared, switch to *Tap restores* and tap it. The slider changes how much a tap takes.
-- For a photo of someone wearing the item: *Crop* to the item, *Brush away* the rest, or *Select* the item with a brush that snaps to its edges and tap *Keep only this*. *Remove skin* takes out arms, legs and faces in one go.
+- The tools work like a paint program: **Wand** (tap to remove or restore similar colours), **Select** (a brush that snaps to the item's edges, then *Keep only this* or *Remove this*), **Paint** (colour the item with a brush; *Keep shading* works like dye, *Solid* paints flat), **Eraser**, **Restore**, **Crop** and a **Dropper** for colours. *Remove skin* takes out arms, legs and faces in one go. Undo covers everything.
+- For a photo of someone wearing the item: crop to it, or select it and keep only that.
 - A white shirt on a white sheet won't work well: use a darker background for pale clothes.
 
 ## Where your things are kept

@@ -991,3 +991,47 @@ img.missing {
 .colour-group .mini-title {
   margin: 0;
 }
+
+/* ---------- the tool palette ---------- */
+.tool-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scrollbar-width: none;
+}
+.tool-bar::-webkit-scrollbar {
+  display: none;
+}
+.tool-btn {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 64px;
+  padding: 8px 6px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tool-btn .ic {
+  width: 24px;
+  height: 24px;
+}
+.tool-btn[aria-checked='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.tool-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+#paint-colour {
+  cursor: pointer;
+}

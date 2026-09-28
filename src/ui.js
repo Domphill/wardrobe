@@ -153,7 +153,11 @@
     rain: '<path d="M7 15.5h10a4 4 0 0 0 .6-8 5.5 5.5 0 0 0-10.7 1.3A3.4 3.4 0 0 0 7 15.5z"/><path d="M9 18.5v2M12.5 18v2.5M16 18.5v2"/>',
     snow: '<path d="M7 14.5h10a4 4 0 0 0 .6-8 5.5 5.5 0 0 0-10.7 1.3A3.4 3.4 0 0 0 7 14.5z"/><path d="M9 18v.1M12.5 19.5v.1M16 18v.1M10.7 20.5v.1M14.2 21.5v.1"/>',
     shuffle: '<path d="M4 7h3.5l7 10H20"/><path d="M4 17h3.5l2-2.9"/><path d="M13.5 9.9 14.5 7H20"/><path d="m17.5 4.5 2.5 2.5-2.5 2.5M17.5 14.5l2.5 2.5-2.5 2.5"/>',
-    pin: '<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'
+    pin: '<path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
+    select: '<circle cx="12" cy="12" r="7.5" stroke-dasharray="3.2 2.6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/>',
+    brush: '<path d="M4.5 19.5c2.5 0 4-1.2 4.4-3.3.3-1.4 1.4-2.2 2.6-1.3l.7.7c.9 1.2.1 2.3-1.3 2.6-2.1.4-3.3 1.9-3.3 4.4"/><path d="m11.5 14.5 7-9.5 1.5 1.5-9 7.5z"/>',
+    crop: '<path d="M7 3.5v13.5h13.5"/><path d="M3.5 7H17v13.5"/>',
+    dropper: '<path d="m4.5 19.5 1-3.5 8-8 2.5 2.5-8 8z"/><path d="m12.5 7 4.5 4.5"/><path d="M15.5 4.5a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-2 2-4-4z"/>'
   };
   UI.icon = (name, cls) => {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
