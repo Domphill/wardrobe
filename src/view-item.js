@@ -682,8 +682,20 @@
                               : st.pickFor === 'paint'
                                 ? 'Tap the photo to pick the brush colour.'
                                 : 'Tap the photo where the colour is, and it is added to the item’s colours.';
-          if (m === 'remove' || m === 'restore') {
-            const tol = h('input.range#cut-tol', { type: 'range', min: '5', max: '90', step: '5', value: String(st.tol), 'aria-label': 'How much a tap takes' });
+          if (m === 'move') {
+            /* the cut-out's strength: lower keeps more of the garment, higher removes more background */
+            const strength = h('input.range#cut-strength', { type: 'range', min: '0', max: '90', step: '5', value: String(st.tol), 'aria-label': 'Cut-out strength' });
+            strength.addEventListener('change', () => {
+              st.tol = Number(strength.value);
+              pushHistory();
+              st.mask = C.auto(st.img, st.tol);
+              st.sel = null;
+              selLayer = null;
+              draw();
+            });
+            UI.append(toolsBox, h('div.field', h('span.label', 'Cut-out strength'), h('div.range-row', h('span.label', 'Keep more'), strength, h('span.label', 'Remove more'))), h('p.fineprint', 'Changing it redoes the automatic cut-out. Undo brings your edits back.'));
+          } else if (m === 'remove' || m === 'restore') {
+            const tol = h('input.range#cut-tol', { type: 'range', min: '0', max: '90', step: '5', value: String(st.tol), 'aria-label': 'How much a tap takes' });
             tol.addEventListener('change', () => (st.tol = Number(tol.value)));
             UI.append(
               toolsBox,
@@ -691,7 +703,7 @@
                 st.wand = v;
                 setMode(v);
               } }),
-              h('div.range-row', h('span.label', 'Less'), tol, h('span.label', 'More'))
+              h('div.field', h('span.label', 'How much a tap takes'), h('div.range-row', h('span.label', 'Exact colour'), tol, h('span.label', 'Similar too')))
             );
           } else if (m === 'erase' || m === 'keep') {
             toolsBox.appendChild(brushSize());

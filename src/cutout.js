@@ -53,7 +53,7 @@
   };
   /* Tolerance 0..100 becomes a colour distance; 35 suits most plain backgrounds without eating
      dark clothes photographed on a mid-grey wall. */
-  const threshold = (t) => 30 + 3.4 * Math.min(100, Math.max(0, t));
+  const threshold = (t) => 6 + 3.6 * Math.min(100, Math.max(0, t));
 
   /* Grows a region from the given seeds over connected pixels that are within the tolerance of the
      reference colour and currently have the value `from` in the mask; sets them to `to`. */
@@ -458,9 +458,12 @@
     mask.set(out);
     return mask;
   };
-  C.segment = (img) => {
+  C.segment = (img, tol) => {
     const K = L.colour;
     if (!K) return null;
+    /* the strength setting leans the decision: low keeps more of the garment, high removes more */
+    const t = tol == null ? 35 : Math.min(100, Math.max(0, tol));
+    const lean = t <= 35 ? 1 + ((35 - t) / 35) * 0.7 : 1 - ((t - 35) / 65) * 0.45;
     const W = img.width;
     const H = img.height;
     const d = img.data;
@@ -501,7 +504,7 @@
     if (fgIdx.length < Math.max(40, n * 0.004)) return null;
     const fg = kmeans(lab, fgIdx, 4, 6);
     const mask = new Uint8Array(n);
-    for (let p = 0; p < n; p++) mask[p] = nearest(p, fg) < nearest(p, bg) ? 1 : 0;
+    for (let p = 0; p < n; p++) mask[p] = nearest(p, fg) < nearest(p, bg) * lean ? 1 : 0;
     C.dropSpecks(mask, w, h, 0.003);
     C.fillHoles(mask, w, h, 0.04);
     C.smooth(mask, w, h);
@@ -515,7 +518,7 @@
     C.smooth(full, W, H);
     return full;
   };
-  C.auto = (img, tol) => C.segment(img) || C.autoFlood(img, tol);
+  C.auto = (img, tol) => C.segment(img, tol) || C.autoFlood(img, tol);
 
   /* A quick preview: the mask straight onto the alpha, no edge work. */
   C.applyFast = (canvas, mask) => {
